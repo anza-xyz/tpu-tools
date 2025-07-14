@@ -1,0 +1,29 @@
+farf/
+target/
+/solana-release/
+/solana-release.tar.bz2
+/solana-metrics/
+/solana-metrics.tar.bz2
+/test-ledger/
+
+**/*.rs.bk
+.cargo
+
+/config/
+
+.cache
+
+# log files
+*.log
+log-*.txt
+log-*/
+!log-collector/
+!log-analyzer/*
+!log-utils/
+
+# intellij files
+.idea/
+/solana.iml
+/.vscode/
+
+.DS_Store

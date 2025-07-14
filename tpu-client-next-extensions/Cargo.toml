@@ -1,0 +1,29 @@
+[package]
+name = "tpu-client-next-extensions"
+version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+async-stream = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+log = { workspace = true }
+solana-clock = { workspace = true }
+solana-rpc-client = { workspace = true }
+solana-tpu-client-next = { workspace = true, features = ["metrics", "agave-unstable-api", "websocket-node-address-service"] }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tonic = { workspace = true }
+yellowstone-grpc-client = { workspace = true }
+yellowstone-grpc-proto = { workspace = true }
+
+[lints]
+workspace = true
