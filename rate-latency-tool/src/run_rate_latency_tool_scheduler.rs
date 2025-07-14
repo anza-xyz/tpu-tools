@@ -1,0 +1,129 @@
+use {
+    log::{debug, warn},
+    solana_clock::Slot,
+    solana_measure::measure::Measure,
+    solana_tpu_client_next::{
+        connection_workers_scheduler::{
+            extract_send_leaders, setup_endpoint, ConnectionWorkersSchedulerConfig,
+        },
+        leader_updater::LeaderUpdater,
+        transaction_batch::TransactionBatch,
+        workers_cache::{shutdown_worker, spawn_worker, WorkersCache, WorkersCacheError},
+        ConnectionWorkersSchedulerError, SendTransactionStats,
+    },
+    std::{sync::Arc, time::Duration},
+    tokio::time::interval,
+    tokio_util::sync::CancellationToken,
+};
+
+pub trait LeaderSlotEstimator {
+    fn estimated_current_slot(&mut self) -> Slot;
+}
+
+pub trait LeaderUpdaterWithSlot: LeaderUpdater + LeaderSlotEstimator {}
+impl<T> LeaderUpdaterWithSlot for T where T: LeaderUpdater + LeaderSlotEstimator {}
+
+pub async fn run_rate_latency_tool_scheduler<F>(
+    rate: std::time::Duration,
+    mut leader_updater: Box<dyn LeaderUpdaterWithSlot>,
+    ConnectionWorkersSchedulerConfig {
+        bind,
+        stake_identity,
+        num_connections,
+        skip_check_transaction_age,
+        worker_channel_size,
+        max_reconnect_attempts,
+        leaders_fanout,
+    }: ConnectionWorkersSchedulerConfig,
+    stats: Arc<SendTransactionStats>,
+    cancel: CancellationToken,
+    mut build_tx: F,
+) -> Result<Arc<SendTransactionStats>, ConnectionWorkersSchedulerError>
+where
+    F: FnMut(Slot) -> Vec<u8>,
+{
+    assert!(
+        worker_channel_size == 1,
+        "Worker channel size must be 1 because otherwise we will wait when the channel has space."
+    );
+    let endpoint = setup_endpoint(bind, stake_identity)?;
+
+    debug!("Client endpoint bind address: {:?}", endpoint.local_addr());
+    let mut workers = WorkersCache::new(num_connections, cancel.clone());
+
+    let mut ticker = interval(rate);
+    let main_loop = async {
+        loop {
+            ticker.tick().await;
+            let current_slot = leader_updater.estimated_current_slot();
+            let connect_leaders = leader_updater.next_leaders(leaders_fanout.connect);
+            let send_leaders = extract_send_leaders(&connect_leaders, leaders_fanout.send);
+
+            // add future leaders to the cache to hide the latency of opening
+            // the connection.
+            for peer in connect_leaders {
+                if !workers.contains(&peer) {
+                    let worker = spawn_worker(
+                        &endpoint,
+                        &peer,
+                        worker_channel_size,
+                        skip_check_transaction_age,
+                        max_reconnect_attempts,
+                        Duration::from_secs(2),
+                        stats.clone(),
+                    );
+                    if let Some(pop_worker) = workers.push(peer, worker) {
+                        shutdown_worker(pop_worker)
+                    }
+                }
+            }
+
+            // the time to generate and send the transaction < 70us, the
+            // assumtion here is that the ticker interval >> this value  and
+            // hence we can neglect generating/sending time for ticking.
+            let mut measure_generate_send = Measure::start("generate_send");
+            let memo_tx = build_tx(current_slot);
+            let transaction_batch = TransactionBatch::new(vec![memo_tx]);
+            for new_leader in &send_leaders {
+                if !workers.contains(new_leader) {
+                    warn!("No existing worker for {new_leader:?}, skip sending to this leader.");
+                    continue;
+                }
+
+                let send_res =
+                    workers.try_send_transactions_to_address(new_leader, transaction_batch.clone());
+                match send_res {
+                    Ok(()) => (),
+                    Err(WorkersCacheError::ShutdownError) => {
+                        debug!("Connection to {new_leader} was closed, worker cache shutdown");
+                    }
+                    Err(WorkersCacheError::ReceiverDropped) => {
+                        // Remove the worker from the cache, if the peer has disconnected.
+                        if let Some(pop_worker) = workers.pop(*new_leader) {
+                            shutdown_worker(pop_worker)
+                        }
+                    }
+                    Err(err) => {
+                        warn!("Connection to {new_leader} was closed, worker error: {err}");
+                        // If we have failed to send batch, it will be dropped.
+                    }
+                }
+            }
+            measure_generate_send.stop();
+            debug!(
+                "Generated and sent transaction batch in {} us",
+                measure_generate_send.as_us()
+            );
+        }
+    };
+    tokio::select! {
+        () = main_loop => (),
+        () = cancel.cancelled() => (),
+    }
+
+    workers.shutdown().await;
+
+    endpoint.close(0u32.into(), b"Closing connection");
+    leader_updater.stop().await;
+    Ok(stats)
+}
