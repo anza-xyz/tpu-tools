@@ -56,6 +56,7 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
         Command::Run {
             account_params,
             execution_params,
+            analysis_params,
         } => {
             let accounts = create_ephemeral_accounts(
                 rpc_client.clone(),
@@ -70,6 +71,7 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
                 websocket_url,
                 accounts,
                 execution_params,
+                analysis_params,
                 cancel,
             )
             .await?;
@@ -77,6 +79,7 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
         Command::ReadAccountsRun {
             read_accounts,
             execution_params,
+            analysis_params,
         } => {
             let accounts = read_accounts_file(read_accounts.accounts_file.clone());
             run_client(
@@ -84,6 +87,7 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
                 websocket_url,
                 accounts,
                 execution_params,
+                analysis_params,
                 cancel,
             )
             .await?;

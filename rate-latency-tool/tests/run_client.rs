@@ -8,7 +8,7 @@ use {
     solana_pubsub_client::pubsub_client::PubsubClient,
     solana_rate_latency_tool::{
         accounts_file::create_ephemeral_accounts,
-        cli::{AccountParams, ExecutionParams},
+        cli::{AccountParams, ExecutionParams, TxAnalysisParams},
         run_client::run_client,
     },
     solana_rent::Rent,
@@ -104,6 +104,10 @@ fn test_transactions_sending() {
                 send_fanout: 1,
                 send_interval: Duration::from_millis(100),
                 compute_unit_price: Some(100),
+            },
+            TxAnalysisParams {
+                output_csv_file: None,
+                yellowstone_url: None,
             },
             cancel,
         )

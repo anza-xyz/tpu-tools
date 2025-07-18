@@ -1,6 +1,10 @@
 //! Meta error which wraps all the submodule errors.
 use {
-    crate::{accounts_creator::AccountsCreatorError, accounts_file::StateLoaderError},
+    crate::{
+        accounts_creator::AccountsCreatorError, accounts_file::StateLoaderError,
+        blockhash_updater::BlockhashUpdaterError, csv_writer::CSVWriterError,
+        yellowstone_subscriber::YellowstoneError,
+    },
     solana_tpu_client_next::ConnectionWorkersSchedulerError,
     thiserror::Error,
 };
@@ -16,6 +20,15 @@ pub enum RateLatencyToolError {
     #[error(transparent)]
     StateLoaderError(#[from] StateLoaderError),
 
+    #[error(transparent)]
+    BlockhashUpdaterError(#[from] BlockhashUpdaterError),
+
+    #[error(transparent)]
+    CSVWriterError(#[from] CSVWriterError),
+
+    #[error(transparent)]
+    YellowstoneError(#[from] YellowstoneError),
+
     #[error("Failed to read keypair file")]
     KeypairReadFailure,
 
@@ -27,4 +40,7 @@ pub enum RateLatencyToolError {
 
     #[error("Leader updater failed")]
     LeaderUpdaterError,
+
+    #[error("Tool finished unexpectedly")]
+    UnexpectedError,
 }

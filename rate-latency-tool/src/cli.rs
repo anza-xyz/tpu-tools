@@ -1,7 +1,8 @@
 use {
     clap::{crate_description, crate_name, crate_version, Args, Parser, Subcommand},
     solana_clap_v3_utils::{
-        input_parsers::parse_url_or_moniker, input_validators::normalize_to_url_if_moniker,
+        input_parsers::{parse_url, parse_url_or_moniker},
+        input_validators::normalize_to_url_if_moniker,
     },
     solana_commitment_config::CommitmentConfig,
     std::{net::SocketAddr, path::PathBuf},
@@ -54,25 +55,31 @@ pub struct ClientCliParameters {
 
 #[derive(Subcommand, Debug, PartialEq, Eq)]
 pub enum Command {
-    #[clap(about = "Create accounts without saving them and run")]
+    #[clap(about = "Create accounts without saving them and run.")]
     Run {
         #[clap(flatten)]
         account_params: AccountParams,
 
         #[clap(flatten)]
         execution_params: ExecutionParams,
+
+        #[clap(flatten)]
+        analysis_params: TxAnalysisParams,
     },
 
-    #[clap(about = "Read accounts from provided accounts file and run")]
+    #[clap(about = "Read accounts from provided accounts file and run.")]
     ReadAccountsRun {
         #[clap(flatten)]
         read_accounts: ReadAccounts,
 
         #[clap(flatten)]
         execution_params: ExecutionParams,
+
+        #[clap(flatten)]
+        analysis_params: TxAnalysisParams,
     },
 
-    #[clap(about = "Create accounts and save them to a file, skipping the execution")]
+    #[clap(about = "Create accounts and save them to a file, skipping the execution.")]
     WriteAccounts(WriteAccounts),
 }
 
@@ -123,7 +130,11 @@ pub struct ExecutionParams {
 #[derive(Args, Copy, Clone, Debug, PartialEq, Eq)]
 #[clap(rename_all = "kebab-case")]
 pub struct AccountParams {
-    #[clap(long, default_value = "1024", help = "Number of payer accounts.")]
+    #[clap(
+        long,
+        default_value = "8",
+        help = "Number of payer accounts, using few of them allows to avoid `AccountInUse` errors."
+    )]
     pub num_payers: usize,
 
     #[clap(
@@ -138,7 +149,7 @@ pub struct AccountParams {
 #[derive(Args, Debug, PartialEq, Eq, Clone)]
 #[clap(rename_all = "kebab-case")]
 pub struct WriteAccounts {
-    #[clap(long, help = "File to save the created accounts into")]
+    #[clap(long, help = "File to save the created accounts into.")]
     pub accounts_file: PathBuf,
 
     #[clap(flatten)]
@@ -148,8 +159,27 @@ pub struct WriteAccounts {
 #[derive(Args, Debug, PartialEq, Eq, Clone)]
 #[clap(rename_all = "kebab-case")]
 pub struct ReadAccounts {
-    #[clap(long, help = "File to read the accounts from")]
+    #[clap(long, help = "File to read the accounts from.")]
     pub accounts_file: PathBuf,
+}
+
+#[derive(Args, Debug, PartialEq, Eq, Clone)]
+#[clap(rename_all = "kebab-case")]
+pub struct TxAnalysisParams {
+    #[clap(
+        long,
+        requires = "yellowstone-url",
+        help = "File to write received transaction data."
+    )]
+    pub output_csv_file: Option<PathBuf>,
+
+    #[clap(
+        long,
+        validator = parse_url,
+        requires = "output-csv-file",
+        help = "Yellowstone url."
+    )]
+    pub yellowstone_url: Option<String>,
 }
 
 fn parse_duration_sec(s: &str) -> Result<Duration, &'static str> {
@@ -185,6 +215,7 @@ mod tests {
             },
         )
     }
+
     fn get_common_execution_params(keypair_file_name: &str) -> (Vec<&str>, ExecutionParams) {
         (
             vec![
@@ -209,6 +240,23 @@ mod tests {
         )
     }
 
+    fn get_common_analysis_params() -> (Vec<&'static str>, TxAnalysisParams) {
+        let csv_file = "/home/testUser/file.csv";
+        let yellowstone_url = "http://127.0.0.1:10000";
+        (
+            vec![
+                "--output-csv-file",
+                &csv_file,
+                "--yellowstone-url",
+                &yellowstone_url,
+            ],
+            TxAnalysisParams {
+                output_csv_file: Some(PathBuf::from(csv_file.to_string())),
+                yellowstone_url: Some(yellowstone_url.to_string()),
+            },
+        )
+    }
+
     #[test]
     fn test_run_command() {
         let keypair_file_name = "/home/testUser/masterKey.json";
@@ -218,6 +266,8 @@ mod tests {
         args.extend(exec_args.iter());
         let (account_args, account_params) = get_common_account_params();
         args.extend(account_args.iter());
+        let (analysis_args, analysis_params) = get_common_analysis_params();
+        args.extend(analysis_args.iter());
 
         let expected_parameters = ClientCliParameters {
             json_rpc_url: "http://localhost:8899".to_string(),
@@ -225,6 +275,7 @@ mod tests {
             command: Command::Run {
                 account_params,
                 execution_params,
+                analysis_params,
             },
             authority: Some(PathBuf::from(&keypair_file_name)),
             validate_accounts: false,
@@ -250,6 +301,8 @@ mod tests {
         ];
         let (exec_args, execution_params) = get_common_execution_params(keypair_file_name);
         args.extend(exec_args.iter());
+        let (analysis_args, analysis_params) = get_common_analysis_params();
+        args.extend(analysis_args.iter());
 
         let expected_parameters = ClientCliParameters {
             json_rpc_url: "http://localhost:8899".to_string(),
@@ -259,6 +312,7 @@ mod tests {
                     accounts_file: accounts_file_name.into(),
                 },
                 execution_params,
+                analysis_params,
             },
             authority: Some(PathBuf::from(&keypair_file_name)),
             validate_accounts: false,

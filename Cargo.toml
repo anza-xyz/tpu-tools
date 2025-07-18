@@ -24,10 +24,12 @@ manual_let_else = "deny"
 used_underscore_binding = "deny"
 
 [workspace.dependencies]
+async-std = "1.12.0"
 async-trait = "0.1.88"
 bincode = "1.3.3"
 chrono = { version = "0.4.41", default-features = false }
-clap = "2.33.1"
+clap = { version = "3.2.23", features = ["derive", "cargo"] }
+csv-async = "1.2"
 futures = "0.3.31"
 log = "0.4.27"
 rand = "0.8.5"
@@ -51,7 +53,7 @@ solana-measure = { git = "https://github.com/KirillLykov/solana.git", branch = "
 solana-message = "2.4.0"
 solana-metrics = { git = "https://github.com/KirillLykov/solana.git", branch = "klykov/make-some-structures-public-tpu-client-next" }
 solana-native-token = "2.2.2"
-solana-pubkey = { version = "2.4.0", default-features = false }  
+solana-pubkey = { version = "2.4.0", default-features = false }
 solana-pubsub-client = { git = "https://github.com/KirillLykov/solana.git", branch = "klykov/make-some-structures-public-tpu-client-next" }
 solana-rent = "2.2.1"
 solana-rpc = { git = "https://github.com/KirillLykov/solana.git", branch = "klykov/make-some-structures-public-tpu-client-next" }
@@ -60,6 +62,7 @@ solana-rpc-client-api = { git = "https://github.com/KirillLykov/solana.git", bra
 solana-sdk-ids = "2.2.1"
 solana-sha256-hasher = "2.2.1"
 solana-signer = "2.2.1"
+solana-signature = { version = "2.3.0" }
 solana-streamer = { git = "https://github.com/KirillLykov/solana.git", branch = "klykov/make-some-structures-public-tpu-client-next" }
 solana-system-interface = "1.0"
 solana-test-validator = { git = "https://github.com/KirillLykov/solana.git", branch = "klykov/make-some-structures-public-tpu-client-next" }
@@ -67,10 +70,13 @@ solana-time-utils = "2.2.1"
 solana-tpu-client = { git = "https://github.com/KirillLykov/solana.git", branch = "klykov/make-some-structures-public-tpu-client-next" }
 solana-tpu-client-next = { git = "https://github.com/KirillLykov/solana.git", branch = "klykov/make-some-structures-public-tpu-client-next" }
 solana-transaction = "2.2.3"
+yellowstone-grpc-client = "8.0.0"
+yellowstone-grpc-proto = "8.0.0"
 spl-memo = "6.0.0"
 thiserror = "2.0.12"
 tokio = "1.46.1"
 tokio-util = "0.7.15"
+tonic = "0.12.1"
 
 [profile.release-with-debug]
 inherits = "release"

@@ -1,14 +1,20 @@
 use {
     crate::{
-        accounts_file::AccountsFile, blockhash_updater::BlockhashUpdater, cli::ExecutionParams,
-        error::RateLatencyToolError, leader_updater::create_leader_updater,
+        accounts_file::AccountsFile,
+        blockhash_updater::BlockhashUpdater,
+        cli::{ExecutionParams, TxAnalysisParams},
+        csv_writer::run_csv_writer,
+        error::RateLatencyToolError,
+        leader_updater::create_leader_updater,
         run_rate_latency_tool_scheduler::run_rate_latency_tool_scheduler,
+        yellowstone_subscriber::run_yellowstone_subscriber,
     },
     log::*,
     solana_clock::Slot,
     solana_compute_budget_interface::ComputeBudgetInstruction,
     solana_hash::Hash,
     solana_keypair::Keypair,
+    solana_pubkey::Pubkey,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_signer::{EncodableKey, Signer},
     solana_time_utils::timestamp,
@@ -19,10 +25,20 @@ use {
         SendTransactionStats,
     },
     solana_transaction::Transaction,
-    std::{fmt::Debug, sync::Arc, time::Duration},
-    tokio::{sync::watch, task::JoinHandle, time::sleep},
+    std::{sync::Arc, time::Duration},
+    tokio::{
+        sync::{mpsc, watch},
+        task::JoinSet,
+        time::sleep,
+    },
     tokio_util::sync::CancellationToken,
 };
+
+const CSV_RECORD_CHANNEL_SIZE: usize = 128;
+
+/// Memo transcaction CU price depends on the message size, but generally it is
+/// in range 9000-20000.
+const MEMO_TX_CU: u32 = 20_000;
 
 /// How often tpu-client-next reports network metrics.
 const METRICS_REPORTING_INTERVAL: Duration = Duration::from_secs(1);
@@ -40,6 +56,10 @@ pub async fn run_client(
         send_interval: rate,
         compute_unit_price,
     }: ExecutionParams,
+    TxAnalysisParams {
+        output_csv_file,
+        yellowstone_url,
+    }: TxAnalysisParams,
     cancel: CancellationToken,
 ) -> Result<(), RateLatencyToolError> {
     let validator_identity = if let Some(staked_identity_file) = staked_identity_file {
@@ -51,12 +71,46 @@ pub async fn run_client(
         None
     };
 
+    let mut tasks = JoinSet::<Result<(), RateLatencyToolError>>::new();
+
+    if let Some(output_csv_file) = output_csv_file {
+        let yellowstone_url = yellowstone_url
+            .expect("yellowstone-url should be required in cla when csv-file specified.");
+        let (csv_sender, csv_receiver) = mpsc::channel(CSV_RECORD_CHANNEL_SIZE);
+        tasks.spawn({
+            let cancel = cancel.clone();
+            async move {
+                run_csv_writer(output_csv_file, csv_receiver, cancel.clone()).await?;
+                Ok(())
+            }
+        });
+
+        let account_pubkeys: Vec<Pubkey> = accounts
+            .payers
+            .iter()
+            .map(|keypair| keypair.pubkey())
+            .collect();
+        let cancel = cancel.clone();
+        tasks.spawn(async move {
+            run_yellowstone_subscriber(&yellowstone_url, &account_pubkeys, csv_sender, cancel)
+                .await?;
+            Ok(())
+        });
+    }
+
     if let Some(application_timeout) = duration {
         let cancel = cancel.clone();
-        tokio::spawn(async move {
-            sleep(application_timeout).await;
-            info!("Timeout reached, cancelling...");
-            cancel.cancel();
+        tasks.spawn(async move {
+            tokio::select! {
+                _ = sleep(application_timeout) => {
+                    info!("Timeout reached, cancelling...");
+                    cancel.cancel();
+                }
+                _ = cancel.cancelled() => {
+                    debug!("Timeout task noticed cancellation early and exited.");
+                }
+            }
+            Ok(())
         });
     }
 
@@ -67,78 +121,97 @@ pub async fn run_client(
     let (blockhash_sender, blockhash_receiver) = watch::channel(blockhash);
     let blockhash_updater = BlockhashUpdater::new(rpc_client.clone(), blockhash_sender);
 
-    let blockhash_task_handle = tokio::spawn(async move { blockhash_updater.run().await });
-
-    let leader_updater = create_leader_updater(rpc_client.clone(), websocket_url).await?;
-
-    let scheduler_handle: JoinHandle<Result<(), RateLatencyToolError>> = tokio::spawn(async move {
-        let config = ConnectionWorkersSchedulerConfig {
-            bind: BindTarget::Address(bind),
-            stake_identity: validator_identity.map(|ident| StakeIdentity::new(&ident)),
-            num_connections: num_max_open_connections,
-            // If worker is busy sending previous transaction, better drop the
-            // current one because timestamp will be driffted.
-            worker_channel_size: 1,
-            // No need to reconnect if the first attempt failed.
-            max_reconnect_attempts: 0,
-            leaders_fanout: Fanout {
-                send: send_fanout,
-                connect: send_fanout.saturating_add(1),
-            },
-            skip_check_transaction_age: true,
-        };
-
-        let stats = Arc::new(SendTransactionStats::default());
-        let mut payer_iter = accounts.payers.iter().cycle();
-        let mut tx_id: usize = 0;
-        let scheduler = run_rate_latency_tool_scheduler(
-            rate,
-            leader_updater,
-            config,
-            stats.clone(),
-            cancel.clone(),
-            |current_slot| {
-                let payer = payer_iter.next().unwrap();
-                let blockhash = *blockhash_receiver.borrow();
-                let timestamp = timestamp();
-                let copy_tx_id = tx_id;
-                tx_id = tx_id.wrapping_add(1);
-                create_memo_transaction(
-                    copy_tx_id,
-                    current_slot,
-                    timestamp,
-                    compute_unit_price,
-                    payer,
-                    blockhash,
-                )
-            },
-        );
-
-        // leaking handle to this task, as it will run until the cancel signal is received
-        tokio::spawn(stats.report_to_influxdb(
-            "transaction-bench-network",
-            METRICS_REPORTING_INTERVAL,
-            cancel,
-        ));
-
-        scheduler.await?;
+    tasks.spawn(async move {
+        blockhash_updater.run().await?;
         Ok(())
     });
 
-    join_service(blockhash_task_handle, "BlockhashUpdater").await;
-    join_service::<RateLatencyToolError>(scheduler_handle, "Scheduler").await;
-    Ok(())
-}
+    let leader_updater = create_leader_updater(rpc_client.clone(), websocket_url).await?;
 
-async fn join_service<Error>(handle: JoinHandle<Result<(), Error>>, task_name: &str)
-where
-    Error: Debug,
-{
-    match handle.await {
-        Ok(Ok(_)) => info!("Task {task_name} completed successfully"),
-        Ok(Err(e)) => error!("Task failed with error: {:?}", e),
-        Err(e) => error!("Task was cancelled or panicked: {:?}", e),
+    let stats = Arc::new(SendTransactionStats::default());
+    // leaking handle to this task, as it will run until the cancel signal is received
+    tasks.spawn({
+        let stats = stats.clone();
+        let cancel = cancel.clone();
+        async move {
+            stats
+                .report_to_influxdb(
+                    "rate-latency-tool-network",
+                    METRICS_REPORTING_INTERVAL,
+                    cancel,
+                )
+                .await;
+            Ok(())
+        }
+    });
+
+    tasks.spawn({
+        let cancel = cancel.clone();
+
+        async move {
+            let config = ConnectionWorkersSchedulerConfig {
+                bind: BindTarget::Address(bind),
+                stake_identity: validator_identity.map(|ident| StakeIdentity::new(&ident)),
+                num_connections: num_max_open_connections,
+                // If worker is busy sending previous transaction, better drop the
+                // current one because timestamp will be driffted.
+                worker_channel_size: 1,
+                // No need to reconnect if the first attempt failed.
+                max_reconnect_attempts: 0,
+                leaders_fanout: Fanout {
+                    send: send_fanout,
+                    connect: send_fanout.saturating_add(1),
+                },
+                skip_check_transaction_age: true,
+            };
+
+            let mut payer_iter = accounts.payers.iter().cycle();
+            let mut tx_id: usize = 0;
+            let scheduler = run_rate_latency_tool_scheduler(
+                rate,
+                leader_updater,
+                config,
+                stats.clone(),
+                cancel,
+                |current_slot| {
+                    let payer = payer_iter.next().unwrap();
+                    let blockhash = *blockhash_receiver.borrow();
+                    let timestamp = timestamp();
+                    let copy_tx_id = tx_id;
+                    tx_id = tx_id.wrapping_add(1);
+                    create_memo_transaction(
+                        copy_tx_id,
+                        current_slot,
+                        timestamp,
+                        compute_unit_price,
+                        payer,
+                        blockhash,
+                    )
+                },
+            );
+
+            scheduler.await?;
+            Ok(())
+        }
+    });
+
+    let mut result = Ok(());
+    while let Some(res) = tasks.join_next().await {
+        match res {
+            Ok(Ok(_)) => info!("Task completed successfully"),
+            Ok(Err(e)) => {
+                error!("Task failed with error: {:?}, stoppting the tool...", e);
+                result = Err(e);
+                cancel.cancel();
+            }
+            Err(e) => {
+                error!("Task panicked: {:?}, stoppting the tool...", e);
+                result = Err(RateLatencyToolError::UnexpectedError);
+                cancel.cancel();
+            }
+        }
     }
+    result
 }
 
 fn create_memo_transaction(
@@ -149,7 +222,6 @@ fn create_memo_transaction(
     payer: &Keypair,
     blockhash: Hash,
 ) -> Vec<u8> {
-    const MEMO_TX_CU: u32 = 10_000;
     let memo = format!("{tx_id},{current_slot},{timestamp}");
     let mut instructions = vec![];
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(MEMO_TX_CU));
