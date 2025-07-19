@@ -43,6 +43,10 @@ const MEMO_TX_CU: u32 = 20_000;
 /// How often tpu-client-next reports network metrics.
 const METRICS_REPORTING_INTERVAL: Duration = Duration::from_secs(1);
 
+/// How long after stop sending transactions, we want to receive updates from
+/// yellowstone.
+const YELLOWSTONE_STREAM_SHUTDOWN_DELAY: Duration = Duration::from_secs(2);
+
 pub async fn run_client(
     rpc_client: Arc<RpcClient>,
     websocket_url: String,
@@ -73,6 +77,10 @@ pub async fn run_client(
 
     let mut tasks = JoinSet::<Result<(), RateLatencyToolError>>::new();
 
+    // If yellowstone is active, we want to receive transactions for some time
+    // after we stop sending them for the case that there is a delay between
+    // transaction sending and receiving them from subscription.
+    let wait_for_yellowstone_longer = output_csv_file.is_some();
     if let Some(output_csv_file) = output_csv_file {
         let yellowstone_url = yellowstone_url
             .expect("yellowstone-url should be required in cla when csv-file specified.");
@@ -98,12 +106,19 @@ pub async fn run_client(
         });
     }
 
+    let cancel_tx_sending = cancel.child_token();
     if let Some(application_timeout) = duration {
         let cancel = cancel.clone();
+        let cancel_tx_sending = cancel_tx_sending.clone();
         tasks.spawn(async move {
             tokio::select! {
                 _ = sleep(application_timeout) => {
-                    info!("Timeout reached, cancelling...");
+                    info!("Timeout reached, stop sending...");
+                    if wait_for_yellowstone_longer {
+                        cancel_tx_sending.cancel();
+                        sleep(YELLOWSTONE_STREAM_SHUTDOWN_DELAY).await;
+                        info!("Timeout reached, stop receiving yellowstone updates...");
+                    }
                     cancel.cancel();
                 }
                 _ = cancel.cancelled() => {
@@ -129,10 +144,9 @@ pub async fn run_client(
     let leader_updater = create_leader_updater(rpc_client.clone(), websocket_url).await?;
 
     let stats = Arc::new(SendTransactionStats::default());
-    // leaking handle to this task, as it will run until the cancel signal is received
     tasks.spawn({
         let stats = stats.clone();
-        let cancel = cancel.clone();
+        let cancel = cancel_tx_sending.clone();
         async move {
             stats
                 .report_to_influxdb(
@@ -146,8 +160,7 @@ pub async fn run_client(
     });
 
     tasks.spawn({
-        let cancel = cancel.clone();
-
+        let cancel = cancel_tx_sending.clone();
         async move {
             let config = ConnectionWorkersSchedulerConfig {
                 bind: BindTarget::Address(bind),
@@ -191,6 +204,7 @@ pub async fn run_client(
             );
 
             scheduler.await?;
+            debug!("Scheduler stopped.");
             Ok(())
         }
     });
