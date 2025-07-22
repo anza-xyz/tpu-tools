@@ -192,13 +192,16 @@ pub async fn run_client(
                     let timestamp = timestamp();
                     let copy_tx_id = tx_id;
                     tx_id = tx_id.wrapping_add(1);
-                    create_memo_transaction(
+                    (
                         copy_tx_id,
-                        current_slot,
-                        timestamp,
-                        compute_unit_price,
-                        payer,
-                        blockhash,
+                        create_memo_transaction(
+                            copy_tx_id,
+                            current_slot,
+                            timestamp,
+                            compute_unit_price,
+                            payer,
+                            blockhash,
+                        ),
                     )
                 },
             );

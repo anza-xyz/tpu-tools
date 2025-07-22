@@ -40,7 +40,7 @@ pub async fn run_rate_latency_tool_scheduler<F>(
     mut build_tx: F,
 ) -> Result<Arc<SendTransactionStats>, ConnectionWorkersSchedulerError>
 where
-    F: FnMut(Slot) -> Vec<u8>,
+    F: FnMut(Slot) -> (usize, Vec<u8>),
 {
     assert!(
         worker_channel_size == 1,
@@ -82,30 +82,35 @@ where
             // assumtion here is that the ticker interval >> this value  and
             // hence we can neglect generating/sending time for ticking.
             let mut measure_generate_send = Measure::start("generate_send");
-            let memo_tx = build_tx(current_slot);
+            let (transaction_id, memo_tx) = build_tx(current_slot);
             let transaction_batch = TransactionBatch::new(vec![memo_tx]);
             for new_leader in &send_leaders {
                 if !workers.contains(new_leader) {
-                    warn!("No existing worker for {new_leader:?}, skip sending to this leader.");
+                    warn!("No existing worker for {new_leader:?} (slot {current_slot}, skip sending to this leader.");
                     continue;
                 }
 
                 let send_res =
                     workers.try_send_transactions_to_address(new_leader, transaction_batch.clone());
                 match send_res {
-                    Ok(()) => (),
+                    Ok(()) => {
+                        debug!("Succefully sent transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
+                    }
                     Err(WorkersCacheError::ShutdownError) => {
-                        debug!("Connection to {new_leader} was closed, worker cache shutdown");
+                        debug!("Failed with ShutdownError sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
                     }
                     Err(WorkersCacheError::ReceiverDropped) => {
+                        debug!("Failed with ReceiverDropped sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
                         // Remove the worker from the cache, if the peer has disconnected.
                         if let Some(pop_worker) = workers.pop(*new_leader) {
                             shutdown_worker(pop_worker)
                         }
                     }
+                    Err(WorkersCacheError::FullChannel) => {
+                        debug!("Failed with FullChannel sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
+                    }
                     Err(err) => {
-                        warn!("Connection to {new_leader} was closed, worker error: {err}");
-                        // If we have failed to send batch, it will be dropped.
+                        debug!("Failed with {err} sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
                     }
                 }
             }
