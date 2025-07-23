@@ -59,6 +59,7 @@ pub async fn run_client(
         send_fanout,
         send_interval: rate,
         compute_unit_price,
+        pinned_address,
     }: ExecutionParams,
     TxAnalysisParams {
         output_csv_file,
@@ -141,7 +142,8 @@ pub async fn run_client(
         Ok(())
     });
 
-    let leader_updater = create_leader_updater(rpc_client.clone(), websocket_url).await?;
+    let leader_updater =
+        create_leader_updater(rpc_client.clone(), websocket_url, pinned_address).await?;
 
     let stats = Arc::new(SendTransactionStats::default());
     tasks.spawn({

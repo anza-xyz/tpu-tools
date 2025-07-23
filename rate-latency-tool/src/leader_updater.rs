@@ -20,7 +20,14 @@ use {
 pub async fn create_leader_updater(
     rpc_client: Arc<RpcClient>,
     websocket_url: String,
+    pinned_address: Option<SocketAddr>,
 ) -> Result<Box<dyn LeaderUpdaterWithSlot>, RateLatencyToolError> {
+    if let Some(pinned_address) = pinned_address {
+        return Ok(Box::new(PinnedLeaderUpdater {
+            address: vec![pinned_address],
+        }));
+    }
+
     let exit = Arc::new(AtomicBool::new(false));
     let leader_tpu_service =
         LeaderTpuService::new(rpc_client, &websocket_url, Protocol::QUIC, exit.clone())
@@ -61,5 +68,25 @@ impl LeaderUpdater for LeaderUpdaterService {
 impl LeaderSlotEstimator for LeaderUpdaterService {
     fn estimated_current_slot(&mut self) -> Slot {
         self.leader_tpu_service.estimated_current_slot()
+    }
+}
+
+struct PinnedLeaderUpdater {
+    address: Vec<SocketAddr>,
+}
+
+#[async_trait]
+impl LeaderUpdater for PinnedLeaderUpdater {
+    fn next_leaders(&mut self, _lookahead_leaders: usize) -> Vec<SocketAddr> {
+        self.address.clone()
+    }
+
+    async fn stop(&mut self) {}
+}
+
+#[async_trait]
+impl LeaderSlotEstimator for PinnedLeaderUpdater {
+    fn estimated_current_slot(&mut self) -> Slot {
+        0
     }
 }

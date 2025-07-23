@@ -102,6 +102,9 @@ pub struct ExecutionParams {
     )]
     pub duration: Option<Duration>,
 
+    #[clap(long, help = "Pinned address to send transactions.")]
+    pub pinned_address: Option<SocketAddr>,
+
     #[clap(
         long,
         parse(try_from_str = parse_duration_ms),
