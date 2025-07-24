@@ -38,3 +38,15 @@ And later sending transactions using generated accounts:
 ```rust
 solana-rate-latency-tool -ul --authority config/faucet.json --validate-accounts read-accounts-run --accounts-file accounts.json --send-interval 50 --duration 60 --compute-unit-price 10 --yellowstone-url "YELLOSTONE_URL" --output-csv-file out.csv
 ```
+
+
+### How to setup local validator with geyser plugin (yellostone)
+
+For geyser plugin to work with validator it is important that versions of rust match.
+To build yellostone with agave from master, I use this branch https://github.com/KirillLykov/yellowstone-grpc/tree/klykov/update-to-agave-master.
+
+When running validator, you need to add one additional cla: ` --geyser-plugin-config yellowstone-grpc/yellowstone-grpc-geyser/config.json`.
+The config file contains path to the `libyellowstone_grpc_geyser.so` file, check that it is correct.
+Beside of that, change the option `"replay_stored_slots"` because by default it is 0.
+
+
