@@ -60,6 +60,7 @@ pub async fn run_client(
         send_interval: rate,
         compute_unit_price,
         pinned_address,
+        handshake_timeout,
     }: ExecutionParams,
     TxAnalysisParams {
         output_csv_file,
@@ -184,6 +185,7 @@ pub async fn run_client(
             let mut tx_id: usize = 0;
             let scheduler = run_rate_latency_tool_scheduler(
                 rate,
+                handshake_timeout,
                 leader_updater,
                 config,
                 stats.clone(),

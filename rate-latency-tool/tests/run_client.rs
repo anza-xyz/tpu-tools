@@ -104,6 +104,8 @@ fn test_transactions_sending() {
                 send_fanout: 1,
                 send_interval: Duration::from_millis(100),
                 compute_unit_price: Some(100),
+                pinned_address: None,
+                handshake_timeout: Duration::from_secs(2),
             },
             TxAnalysisParams {
                 output_csv_file: None,

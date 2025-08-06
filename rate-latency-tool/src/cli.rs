@@ -128,6 +128,14 @@ pub struct ExecutionParams {
 
     #[clap(long, help = "Sets compute-unit-price for transactions.")]
     pub compute_unit_price: Option<u64>,
+
+    #[clap(
+        long,
+        parse(try_from_str = parse_duration_sec),
+        default_value = "2",
+        help = "Interval between sent transactions in seconds."
+    )]
+    pub handshake_timeout: Duration,
 }
 
 #[derive(Args, Copy, Clone, Debug, PartialEq, Eq)]
@@ -239,6 +247,8 @@ mod tests {
                 send_interval: Duration::from_millis(100),
                 send_fanout: 3,
                 compute_unit_price: None,
+                pinned_address: None,
+                handshake_timeout: Duration::from_secs(2),
             },
         )
     }

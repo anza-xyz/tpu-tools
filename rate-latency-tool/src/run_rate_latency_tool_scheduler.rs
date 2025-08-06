@@ -24,7 +24,8 @@ pub trait LeaderUpdaterWithSlot: LeaderUpdater + LeaderSlotEstimator {}
 impl<T> LeaderUpdaterWithSlot for T where T: LeaderUpdater + LeaderSlotEstimator {}
 
 pub async fn run_rate_latency_tool_scheduler<F>(
-    rate: std::time::Duration,
+    rate: Duration,
+    handshake_timeout: Duration,
     mut leader_updater: Box<dyn LeaderUpdaterWithSlot>,
     ConnectionWorkersSchedulerConfig {
         bind,
@@ -69,7 +70,7 @@ where
                         worker_channel_size,
                         skip_check_transaction_age,
                         max_reconnect_attempts,
-                        Duration::from_secs(2),
+                        handshake_timeout,
                         stats.clone(),
                     );
                     if let Some(pop_worker) = workers.push(peer, worker) {
