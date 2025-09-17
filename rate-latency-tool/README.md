@@ -26,15 +26,23 @@ For mainnet and even testnet it is desirable to save created payer accounts.
 This is achieved by the tool by first creating accounts and saving it to file `accounts.json`:
 
 ```rust
-solana-rate-latency-tool -ul --authority config/faucet.json --validate-accounts write-accounts --accounts-file accounts.json --num-payers 256 --payer-account-balance 10
+solana-rate-latency-tool -ut --authority "funder.json" --validate-accounts write-accounts --accounts-file accounts.json --num-payers 8 --payer-account-balance 1
 ```
 
 And later sending transactions using generated accounts:
 
 ```rust
-solana-rate-latency-tool -ul --authority config/faucet.json --validate-accounts read-accounts-run --accounts-file accounts.json --send-interval 50 --duration 60 --compute-unit-price 10 --yellowstone-url "YELLOSTONE_URL" --output-csv-file out.csv
+TOOL="/solana-rate-latency-tool"
+FUNDER="funder.json"
+IDENTITY="validator_identity.json" # for staked connection
+DURATION=600
+
+RUST_LOG=solana=debug $TOOL -ut --authority $FUNDER --validate-accounts read-accounts-run  --accounts-file accounts.json --staked-identity-file $IDENTITY --send-interval 100 --duration $DURATION --compute-unit-price 10 --yellowstone-url "http://api.testnet.solana.com" --send-fanout 1 --use-legacy-leader-updater --output-csv-file out.csv 2> err.txt
 ```
 
+### How to analyze the results
+
+The result of the execution is file specified by `--output-csv-file`. This file has csv format and might be analyzed elsewhere. As an example, we provide a jupyter notebook which can be found in the scripts folder.
 
 ### How to setup local validator with geyser plugin (yellostone)
 
