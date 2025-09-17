@@ -1,4 +1,5 @@
 use {
+    crate::csv_writer::{CSVRecord, TransactionSendStatus},
     log::{debug, warn},
     solana_clock::Slot,
     solana_measure::measure::Measure,
@@ -17,13 +18,13 @@ use {
 };
 
 pub trait LeaderSlotEstimator {
-    fn estimated_current_slot(&mut self) -> Slot;
+    fn get_current_slot(&mut self) -> Slot;
 }
 
 pub trait LeaderUpdaterWithSlot: LeaderUpdater + LeaderSlotEstimator {}
 impl<T> LeaderUpdaterWithSlot for T where T: LeaderUpdater + LeaderSlotEstimator {}
 
-pub async fn run_rate_latency_tool_scheduler<F>(
+pub async fn run_rate_latency_tool_scheduler<F, S>(
     rate: Duration,
     handshake_timeout: Duration,
     mut leader_updater: Box<dyn LeaderUpdaterWithSlot>,
@@ -39,9 +40,11 @@ pub async fn run_rate_latency_tool_scheduler<F>(
     stats: Arc<SendTransactionStats>,
     cancel: CancellationToken,
     mut build_tx: F,
+    mut send_record: S,
 ) -> Result<Arc<SendTransactionStats>, ConnectionWorkersSchedulerError>
 where
-    F: FnMut(Slot) -> (usize, Vec<u8>),
+    F: FnMut(Slot) -> (usize, Vec<u8>, CSVRecord),
+    S: FnMut(CSVRecord),
 {
     assert!(
         worker_channel_size == 1,
@@ -56,14 +59,17 @@ where
     let main_loop = async {
         loop {
             ticker.tick().await;
-            let current_slot = leader_updater.estimated_current_slot();
+            let current_slot = leader_updater.get_current_slot();
             let connect_leaders = leader_updater.next_leaders(leaders_fanout.connect);
             let send_leaders = extract_send_leaders(&connect_leaders, leaders_fanout.send);
+            debug!("Connect leaders: {connect_leaders:?}, send leaders: {send_leaders:?} for slot {current_slot}, leader_fanout: {leaders_fanout:?}.");
 
             // add future leaders to the cache to hide the latency of opening
             // the connection.
             for peer in connect_leaders {
+                debug!("Checking connection to the peer: {}", peer);
                 if !workers.contains(&peer) {
+                    debug!("Creating connection to the peer: {}", peer);
                     let worker = spawn_worker(
                         &endpoint,
                         &peer,
@@ -76,6 +82,8 @@ where
                     if let Some(pop_worker) = workers.push(peer, worker) {
                         shutdown_worker(pop_worker)
                     }
+                } else {
+                    debug!("Connection to the peer {} exists.", peer);
                 }
             }
 
@@ -83,7 +91,7 @@ where
             // assumtion here is that the ticker interval >> this value  and
             // hence we can neglect generating/sending time for ticking.
             let mut measure_generate_send = Measure::start("generate_send");
-            let (transaction_id, memo_tx) = build_tx(current_slot);
+            let (transaction_id, memo_tx, mut record) = build_tx(current_slot);
             let transaction_batch = TransactionBatch::new(vec![memo_tx]);
             for new_leader in &send_leaders {
                 if !workers.contains(new_leader) {
@@ -93,12 +101,14 @@ where
 
                 let send_res =
                     workers.try_send_transactions_to_address(new_leader, transaction_batch.clone());
-                match send_res {
+                let status = match send_res {
                     Ok(()) => {
                         debug!("Succefully sent transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
+                        TransactionSendStatus::Sent
                     }
                     Err(WorkersCacheError::ShutdownError) => {
                         debug!("Failed with ShutdownError sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
+                        TransactionSendStatus::Other
                     }
                     Err(WorkersCacheError::ReceiverDropped) => {
                         debug!("Failed with ReceiverDropped sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
@@ -106,15 +116,20 @@ where
                         if let Some(pop_worker) = workers.pop(*new_leader) {
                             shutdown_worker(pop_worker)
                         }
+                        TransactionSendStatus::ReceiverDropped
                     }
                     Err(WorkersCacheError::FullChannel) => {
                         debug!("Failed with FullChannel sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
+                        TransactionSendStatus::FullChannel
                     }
                     Err(err) => {
                         debug!("Failed with {err} sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
+                        TransactionSendStatus::Other
                     }
-                }
+                };
+                record.tx_status.push((status, new_leader.to_string()));
             }
+            send_record(record);
             measure_generate_send.stop();
             debug!(
                 "Generated and sent transaction batch in {} us",

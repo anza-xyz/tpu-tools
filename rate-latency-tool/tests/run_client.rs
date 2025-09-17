@@ -22,7 +22,7 @@ use {
     solana_streamer::socket::SocketAddrSpace,
     solana_test_validator::TestValidatorGenesis,
     solana_transaction::versioned::VersionedTransaction,
-    spl_memo::id as spl_memo_id,
+    spl_memo_interface::v3::id as spl_memo_id,
     std::{
         net::{IpAddr, Ipv4Addr, SocketAddr},
         sync::Arc,
@@ -106,6 +106,8 @@ fn test_transactions_sending() {
                 compute_unit_price: Some(100),
                 pinned_address: None,
                 handshake_timeout: Duration::from_secs(2),
+                use_legacy_leader_updater: true,
+                use_yellowstone_leader_tracker: false,
             },
             TxAnalysisParams {
                 output_csv_file: None,

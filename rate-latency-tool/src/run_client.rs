@@ -3,17 +3,18 @@ use {
         accounts_file::AccountsFile,
         blockhash_updater::BlockhashUpdater,
         cli::{ExecutionParams, TxAnalysisParams},
-        csv_writer::run_csv_writer,
+        csv_writer::{run_csv_writer, CSVRecord},
         error::RateLatencyToolError,
-        leader_updater::create_leader_updater,
+        leader_updater::{create_leader_updater, LeaderUpdaterType},
         run_rate_latency_tool_scheduler::run_rate_latency_tool_scheduler,
         yellowstone_subscriber::run_yellowstone_subscriber,
     },
     log::*,
+    node_address_service::LeaderTpuCacheServiceConfig,
     solana_clock::Slot,
     solana_compute_budget_interface::ComputeBudgetInstruction,
     solana_hash::Hash,
-    solana_keypair::Keypair,
+    solana_keypair::{Keypair, Signature},
     solana_pubkey::Pubkey,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_signer::{EncodableKey, Signer},
@@ -61,6 +62,8 @@ pub async fn run_client(
         compute_unit_price,
         pinned_address,
         handshake_timeout,
+        use_legacy_leader_updater,
+        use_yellowstone_leader_tracker,
     }: ExecutionParams,
     TxAnalysisParams {
         output_csv_file,
@@ -79,6 +82,9 @@ pub async fn run_client(
 
     let mut tasks = JoinSet::<Result<(), RateLatencyToolError>>::new();
 
+    let yellowstone_url_clone = yellowstone_url.clone();
+
+    let (tx_tracker_sender, tx_tracker_receiver) = mpsc::unbounded_channel();
     // If yellowstone is active, we want to receive transactions for some time
     // after we stop sending them for the case that there is a delay between
     // transaction sending and receiving them from subscription.
@@ -90,7 +96,13 @@ pub async fn run_client(
         tasks.spawn({
             let cancel = cancel.clone();
             async move {
-                run_csv_writer(output_csv_file, csv_receiver, cancel.clone()).await?;
+                run_csv_writer(
+                    output_csv_file,
+                    csv_receiver,
+                    tx_tracker_receiver,
+                    cancel.clone(),
+                )
+                .await?;
                 Ok(())
             }
         });
@@ -143,8 +155,36 @@ pub async fn run_client(
         Ok(())
     });
 
-    let leader_updater =
-        create_leader_updater(rpc_client.clone(), websocket_url, pinned_address).await?;
+    let updater_type = if let Some(pinned_address) = pinned_address {
+        LeaderUpdaterType::Pinned(pinned_address)
+    } else {
+        if use_legacy_leader_updater {
+            debug!("Using legacy leader updater");
+            LeaderUpdaterType::Legacy
+        } else {
+            debug!("Using leader tracker updater");
+            let config = LeaderTpuCacheServiceConfig {
+                lookahead_leaders: 4,
+                refresh_every: Duration::from_secs(30),
+                max_consecutive_failures: 5,
+            };
+            if use_yellowstone_leader_tracker {
+                LeaderUpdaterType::YellowstoneLeaderTracker(config)
+            } else {
+                LeaderUpdaterType::LeaderTracker(config)
+            }
+        }
+    };
+
+    //
+    let leader_updater = create_leader_updater(
+        rpc_client.clone(),
+        websocket_url,
+        yellowstone_url_clone,
+        updater_type,
+        cancel.clone(),
+    )
+    .await?;
 
     let stats = Arc::new(SendTransactionStats::default());
     tasks.spawn({
@@ -189,24 +229,40 @@ pub async fn run_client(
                 leader_updater,
                 config,
                 stats.clone(),
-                cancel,
+                cancel.clone(),
                 |current_slot| {
                     let payer = payer_iter.next().unwrap();
                     let blockhash = *blockhash_receiver.borrow();
                     let timestamp = timestamp();
                     let copy_tx_id = tx_id;
                     tx_id = tx_id.wrapping_add(1);
-                    (
+                    let (signature, tx) = create_memo_transaction(
                         copy_tx_id,
-                        create_memo_transaction(
-                            copy_tx_id,
-                            current_slot,
-                            timestamp,
-                            compute_unit_price,
-                            payer,
-                            blockhash,
-                        ),
-                    )
+                        current_slot,
+                        timestamp,
+                        compute_unit_price,
+                        payer,
+                        blockhash,
+                    );
+                    let record = CSVRecord {
+                        signature: signature.to_string(),
+                        transaction_id: copy_tx_id,
+                        sent_slot: current_slot,
+                        received_slot: None,
+                        sent_timestamp: timestamp,
+                        received_timestamp: None,
+                        received_subscr_timestamp: None,
+                        tx_status: vec![],
+                    };
+                    (copy_tx_id, tx, record)
+                },
+                |record: CSVRecord| {
+                    if let Err(err) = tx_tracker_sender.send(record) {
+                        error!(
+                            "Unexpectedly failed to send transaction record to the tracker: {err}"
+                        );
+                        cancel.cancel();
+                    }
                 },
             );
 
@@ -242,16 +298,20 @@ fn create_memo_transaction(
     compute_unit_price: Option<u64>,
     payer: &Keypair,
     blockhash: Hash,
-) -> Vec<u8> {
+) -> (Signature, Vec<u8>) {
     let memo = format!("{tx_id},{current_slot},{timestamp}");
-    let mut instructions = vec![];
+    let mut instructions: Vec<solana_message::Instruction> = vec![];
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(MEMO_TX_CU));
     if let Some(compute_unit_price) = compute_unit_price {
         instructions.push(ComputeBudgetInstruction::set_compute_unit_price(
             compute_unit_price,
         ));
     }
-    instructions.push(spl_memo::build_memo(memo.as_bytes(), &[]));
+    instructions.push(spl_memo_interface::instruction::build_memo(
+        &spl_memo_interface::v3::id(),
+        memo.as_bytes(),
+        &[],
+    ));
 
     let tx = Transaction::new_signed_with_payer(
         &instructions,
@@ -259,5 +319,5 @@ fn create_memo_transaction(
         &[&payer],
         blockhash,
     );
-    bincode::serialize(&tx).unwrap()
+    (tx.signatures[0], bincode::serialize(&tx).unwrap())
 }

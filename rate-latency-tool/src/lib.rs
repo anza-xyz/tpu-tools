@@ -7,4 +7,5 @@ pub mod error;
 pub mod leader_updater;
 pub mod run_client;
 pub mod run_rate_latency_tool_scheduler;
+pub mod yellowstone_leader_tracker;
 pub mod yellowstone_subscriber;

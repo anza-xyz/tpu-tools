@@ -133,9 +133,19 @@ pub struct ExecutionParams {
         long,
         parse(try_from_str = parse_duration_sec),
         default_value = "2",
-        help = "Interval between sent transactions in seconds."
+        help = "Handshake timeout."
     )]
     pub handshake_timeout: Duration,
+
+    #[clap(long, help = "Use old code for leader updates tracking.")]
+    pub use_legacy_leader_updater: bool,
+
+    #[clap(
+        long,
+        requires = "yellowstone-url",
+        help = "Use yellowstone grpc for slot updates instead of ws."
+    )]
+    pub use_yellowstone_leader_tracker: bool,
 }
 
 #[derive(Args, Copy, Clone, Debug, PartialEq, Eq)]
@@ -249,6 +259,8 @@ mod tests {
                 compute_unit_price: None,
                 pinned_address: None,
                 handshake_timeout: Duration::from_secs(2),
+                use_legacy_leader_updater: false,
+                use_yellowstone_leader_tracker: false,
             },
         )
     }

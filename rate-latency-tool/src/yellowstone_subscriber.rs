@@ -4,6 +4,7 @@ use {
     log::{debug, error, info, warn},
     solana_pubkey::Pubkey,
     solana_signature::Signature,
+    solana_time_utils::timestamp,
     std::{
         collections::HashMap,
         io,
@@ -14,13 +15,16 @@ use {
     thiserror::Error,
     tokio::{fs, sync::mpsc::Sender},
     tokio_util::sync::CancellationToken,
-    tonic::transport::{channel::ClientTlsConfig, Certificate},
     yellowstone_grpc_client::{
-        GeyserGrpcBuilderError, GeyserGrpcClient, GeyserGrpcClientError, Interceptor,
+        ClientTlsConfig, GeyserGrpcBuilderError, GeyserGrpcClient, GeyserGrpcClientError,
+        Interceptor,
     },
-    yellowstone_grpc_proto::geyser::{
-        subscribe_update::UpdateOneof, CommitmentLevel, SubscribeRequest,
-        SubscribeRequestFilterTransactions, SubscribeUpdateTransaction,
+    yellowstone_grpc_proto::{
+        geyser::{
+            subscribe_update::UpdateOneof, CommitmentLevel, SubscribeRequest,
+            SubscribeRequestFilterTransactions, SubscribeUpdateTransaction,
+        },
+        tonic::transport::Certificate,
     },
 };
 
@@ -50,7 +54,7 @@ pub(crate) struct ClientConfig {
     timeout: Duration,
 }
 
-async fn create_geyser_client(
+pub(crate) async fn create_geyser_client(
     ClientConfig {
         ca_certificate,
         yellowstone_url: endpoint,
@@ -78,7 +82,7 @@ async fn create_geyser_client(
     Ok(client)
 }
 
-fn create_client_config(yellowstone_url: &str) -> ClientConfig {
+pub(crate) fn create_client_config(yellowstone_url: &str) -> ClientConfig {
     ClientConfig {
         ca_certificate: None, // TODO: set this to a default CA certificate path
         yellowstone_url: yellowstone_url.to_string(),
@@ -110,7 +114,7 @@ fn build_request(payers_pubkeys: &[Pubkey]) -> SubscribeRequest {
         blocks: HashMap::new(),
         blocks_meta: HashMap::new(),
         entry: HashMap::new(),
-        commitment: Some(CommitmentLevel::Processed as i32),
+        commitment: Some(CommitmentLevel::Confirmed as i32),
         accounts_data_slice: vec![],
         ping: None,
         from_slot: None,
@@ -134,15 +138,20 @@ pub async fn run_yellowstone_subscriber(
         while let Some(message) = stream.next().await {
             match message {
                 Ok(msg) => {
-                    let received_timestamp: Option<u64> = msg
+                    let received_subscr_timestamp: Option<u64> = msg
                         .created_at
                         .and_then(|ts| ts.try_into().ok())
                         .and_then(|sys_time: SystemTime| sys_time.duration_since(UNIX_EPOCH).ok())
                         .map(|duration| duration.as_millis() as u64);
+                    let received_timestamp = Some(timestamp());
                     match msg.update_oneof {
                         Some(UpdateOneof::Transaction(msg)) => {
                             debug!("Received transaction info: {msg:?}");
-                            if let Ok(record) = try_build_csv_record(msg, received_timestamp) {
+                            if let Ok(record) = try_build_csv_record(
+                                msg,
+                                received_timestamp,
+                                received_subscr_timestamp,
+                            ) {
                                 if csv_sender.send(record).await.is_err() {
                                     info!("Unexpectidly dropped CSVRecord receiver, stopping yellowstone subscriber.");
                                     break;
@@ -180,6 +189,7 @@ pub async fn run_yellowstone_subscriber(
 fn try_build_csv_record(
     msg: SubscribeUpdateTransaction,
     received_timestamp: Option<u64>,
+    received_subscr_timestamp: Option<u64>,
 ) -> Result<CSVRecord, YellowstoneError> {
     if let Some(tx) = msg.transaction {
         if let Some(meta) = tx.meta {
@@ -197,9 +207,11 @@ fn try_build_csv_record(
                         signature,
                         transaction_id,
                         sent_slot,
-                        received_slot,
+                        received_slot: Some(received_slot),
                         sent_timestamp,
                         received_timestamp,
+                        received_subscr_timestamp,
+                        tx_status: vec![],
                     });
                 }
             }

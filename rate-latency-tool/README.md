@@ -8,12 +8,8 @@ What data we can collect from this
 
 * `slot_latency = landed_slot - target_slot` where `landed_slot` we can get from network,
 * Number of transactions being lost vs time
-* `time_latency = timestamp - generation_timestamps` -- but not sure how. Maybe with some geyser magic.
+* `time_latency = received_timestamp - sent_timestamp` which, offcourse, includes many latencies.
 * Measure txs reordering.
-
-Some future features:
-* optionally use RPC instead of TPU to send txs
-* improve logging so that it uses tracing and specified IP address everywhere (when PR lands on tpu-client-next first)
 
 ### Run without saving created payers (only on private cluster)
 

@@ -5,6 +5,7 @@ use {
         blockhash_updater::BlockhashUpdaterError, csv_writer::CSVWriterError,
         yellowstone_subscriber::YellowstoneError,
     },
+    node_address_service::NodeAddressServiceError,
     solana_tpu_client_next::ConnectionWorkersSchedulerError,
     thiserror::Error,
 };
@@ -43,4 +44,7 @@ pub enum RateLatencyToolError {
 
     #[error("Tool finished unexpectedly")]
     UnexpectedError,
+
+    #[error(transparent)]
+    NodeAddressServiceError(#[from] NodeAddressServiceError),
 }
