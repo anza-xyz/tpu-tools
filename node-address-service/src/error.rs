@@ -20,9 +20,9 @@ pub enum NodeAddressServiceError {
     #[error(transparent)]
     JoinError(#[from] tokio::task::JoinError),
 
-    #[error("Unexpectly dropped leaders_sender")]
+    #[error("Unexpectly dropped a channel.")]
     ChannelClosed,
 
-    #[error("Other")]
-    Other,
+    #[error("Failed to initialize NodeAddressService.")]
+    InitializationFailed,
 }

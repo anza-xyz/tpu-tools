@@ -4219,6 +4219,7 @@ dependencies = [
  "solana-connection-cache",
  "solana-epoch-schedule 3.0.0",
  "solana-keypair 3.0.1",
+ "solana-logger",
  "solana-measure",
  "solana-metrics",
  "solana-pubkey 3.0.0",

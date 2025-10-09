@@ -34,7 +34,7 @@ use {
 
 #[test]
 fn test_transactions_sending() {
-    solana_logger::setup_with_default("INFO");
+    solana_logger::setup_with("debug");
 
     let mint_keypair = Keypair::new();
     let mint_pubkey = mint_keypair.pubkey();
@@ -106,7 +106,7 @@ fn test_transactions_sending() {
                 compute_unit_price: Some(100),
                 pinned_address: None,
                 handshake_timeout: Duration::from_secs(2),
-                use_legacy_leader_updater: true,
+                use_legacy_leader_updater: false,
                 use_yellowstone_leader_tracker: false,
             },
             TxAnalysisParams {

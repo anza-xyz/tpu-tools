@@ -37,11 +37,9 @@ pub async fn create_leader_updater(
     cancel: CancellationToken,
 ) -> Result<Box<dyn LeaderUpdaterWithSlot>, RateLatencyToolError> {
     match updater_type {
-        LeaderUpdaterType::Pinned(pinned_address) => {
-            return Ok(Box::new(PinnedLeaderUpdater {
-                address: vec![pinned_address],
-            }))
-        }
+        LeaderUpdaterType::Pinned(pinned_address) => Ok(Box::new(PinnedLeaderUpdater {
+            address: vec![pinned_address],
+        })),
         LeaderUpdaterType::Legacy => {
             let exit = Arc::new(AtomicBool::new(false));
             let leader_tpu_service =

@@ -135,7 +135,7 @@ impl YellowstoneSlotUpdateService {
         let client_config = create_client_config(&yellowstone_url);
         let mut client = create_geyser_client(client_config).await.map_err(|e| {
             error!("Failed to create Yellowstone client: {e:?}");
-            NodeAddressServiceError::Other
+            NodeAddressServiceError::InitializationFailed
         })?;
 
         let request = Self::build_request();
@@ -152,7 +152,7 @@ impl YellowstoneSlotUpdateService {
             .await
             .map_err(|e| {
                 error!("Failed to subscribe to Yellowstone: {e:?}");
-                NodeAddressServiceError::Other
+                NodeAddressServiceError::InitializationFailed
             })?;
 
         loop {
@@ -273,7 +273,7 @@ impl LeaderTpuCacheService {
         let mut leader_tpu_cache = LeaderTpuCacheServiceState::new(0, 0, 0, vec![], vec![]);
 
         let mut num_consequent_failures: usize = 0;
-        let mut last_cluster_refresh = Instant::now() - config.refresh_every; // to ensure we refresh immediately
+        let mut last_cluster_refresh = Instant::now() - config.refresh_nodes_info_every; // to ensure we refresh immediately
         loop {
             tokio::select! {
                 res = slot_receiver.changed() => {
@@ -285,7 +285,7 @@ impl LeaderTpuCacheService {
                     debug!("Slot update received, refreshing leader cache: {:?}", last_cluster_refresh.elapsed());
                     if let Err(e) = leader_tpu_cache.update(
                         &mut last_cluster_refresh,
-                        config.refresh_every,
+                        config.refresh_nodes_info_every,
                         &rpc_client,
                         &slot_receiver
                     ).await {

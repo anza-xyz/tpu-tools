@@ -157,22 +157,20 @@ pub async fn run_client(
 
     let updater_type = if let Some(pinned_address) = pinned_address {
         LeaderUpdaterType::Pinned(pinned_address)
+    } else if use_legacy_leader_updater {
+        debug!("Using legacy leader updater");
+        LeaderUpdaterType::Legacy
     } else {
-        if use_legacy_leader_updater {
-            debug!("Using legacy leader updater");
-            LeaderUpdaterType::Legacy
+        debug!("Using leader tracker updater");
+        let config = LeaderTpuCacheServiceConfig {
+            lookahead_leaders: 4,
+            refresh_nodes_info_every: Duration::from_secs(30),
+            max_consecutive_failures: 5,
+        };
+        if use_yellowstone_leader_tracker {
+            LeaderUpdaterType::YellowstoneLeaderTracker(config)
         } else {
-            debug!("Using leader tracker updater");
-            let config = LeaderTpuCacheServiceConfig {
-                lookahead_leaders: 4,
-                refresh_every: Duration::from_secs(30),
-                max_consecutive_failures: 5,
-            };
-            if use_yellowstone_leader_tracker {
-                LeaderUpdaterType::YellowstoneLeaderTracker(config)
-            } else {
-                LeaderUpdaterType::LeaderTracker(config)
-            }
+            LeaderUpdaterType::LeaderTracker(config)
         }
     };
 
