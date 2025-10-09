@@ -105,14 +105,21 @@ const MAX_SLOT_SKIP_DISTANCE: u64 = 48;
 
 const RECENT_LEADER_SLOTS_CAPACITY: usize = 12;
 
+pub trait SlotEstimator {
+    fn record_slot(&mut self, current_slot: Slot);
+    fn estimate_current_slot(&self) -> Slot;
+}
+
 #[derive(Debug)]
-pub(crate) struct RecentLeaderSlots(VecDeque<Slot>);
+pub struct RecentLeaderSlots(VecDeque<Slot>);
 impl RecentLeaderSlots {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self(VecDeque::with_capacity(RECENT_LEADER_SLOTS_CAPACITY))
     }
+}
 
-    pub(crate) fn record_slot(&mut self, current_slot: Slot) {
+impl SlotEstimator for RecentLeaderSlots {
+    fn record_slot(&mut self, current_slot: Slot) {
         self.0.push_back(current_slot);
         // 12 recent slots should be large enough to avoid a misbehaving
         // validator from affecting the median recent slot
@@ -123,7 +130,7 @@ impl RecentLeaderSlots {
 
     // Estimate the current slot from recent slot notifications.
     #[allow(clippy::arithmetic_side_effects)]
-    pub(crate) fn estimate_current_slot(&self) -> Slot {
+    fn estimate_current_slot(&self) -> Slot {
         let mut recent_slots: Vec<Slot> = self.0.iter().cloned().collect();
         assert!(!recent_slots.is_empty());
         recent_slots.sort_unstable();
