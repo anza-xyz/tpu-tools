@@ -37,50 +37,50 @@ log = "0.4.27"
 rand = "0.8.5"
 serde = "1.0.219" # must match the serde_derive version, see https://github.com/serde-rs/serde/issues/2584#issuecomment-1685252251
 serde_json = "1.0.140"
-solana-clap-v3-utils = { git = "https://github.com/anza-xyz/agave.git" }
-solana-cli-config = { git = "https://github.com/anza-xyz/agave.git" }
+solana-clap-v3-utils = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
+solana-cli-config = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
 solana-clock = "3.0.0"
 solana-commitment-config = "3.0.0"
 solana-compute-budget-interface = "3.0.0"
 solana-config-interface = "2.0.0"
-solana-connection-cache = { git = "https://github.com/anza-xyz/agave.git" }
-solana-core = { git = "https://github.com/anza-xyz/agave.git" }
+solana-connection-cache = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
+solana-core = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
 solana-epoch-schedule = "3.0.0"
 solana-epoch-info = "3.0.0"
-solana-faucet = { git = "https://github.com/anza-xyz/agave.git" }
+solana-faucet = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
 solana-fee-calculator = "3.0.0"
 solana-hash = "3.0.0"
 solana-instruction = "3.0.0"
 solana-keypair = "3.0.1"
 solana-logger = "3.0.0"
-solana-measure = { git = "https://github.com/anza-xyz/agave.git" }
+solana-measure = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
 solana-message = "3.0.1"
-solana-metrics = { git = "https://github.com/anza-xyz/agave.git" }
+solana-metrics = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
 solana-native-token = "3.0.0"
 solana-pubkey = { version = "3.0.0", default-features = false }
-solana-pubsub-client = { git = "https://github.com/anza-xyz/agave.git" }
+solana-pubsub-client = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
 solana-quic-definitions = "3.0.0"
 solana-rent = "3.0.0"
-solana-rpc = { git = "https://github.com/anza-xyz/agave.git" }
-solana-rpc-client = { git = "https://github.com/anza-xyz/agave.git" }
-solana-rpc-client-api = { git = "https://github.com/anza-xyz/agave.git" }
+solana-rpc = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
+solana-rpc-client = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
+solana-rpc-client-api = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
 solana-sdk-ids = "3.0.0"
 solana-sha256-hasher = "3.0.0"
 solana-signature = { version = "3.1.0" }
 solana-signer = "3.0.0"
-solana-streamer = { git = "https://github.com/anza-xyz/agave.git" }
+solana-streamer = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
 solana-system-interface = "2.0"
-solana-test-validator = { git = "https://github.com/anza-xyz/agave.git" }
+solana-test-validator = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
 solana-time-utils = "3.0.0"
-solana-tpu-client = { git = "https://github.com/anza-xyz/agave.git" }
-solana-tpu-client-next = { git = "https://github.com/anza-xyz/agave.git" }
+solana-tpu-client = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
+solana-tpu-client-next = { git = "https://github.com/anza-xyz/agave.git", rev = "6bef12" }
 solana-transaction = "3.0.1"
 yellowstone-grpc-client = "9.0.0"
 yellowstone-grpc-proto = "9.0.0"
 spl-memo-interface = "2.0.0"
-thiserror = "2.0.12"
-tokio = "1.46.1"
-tokio-util = "0.7.15"
+thiserror = "2.0.17"
+tokio = "1.48.0"
+tokio-util = "0.7.16"
 tonic = "0.12.1"
 tracing = "0.1"
 

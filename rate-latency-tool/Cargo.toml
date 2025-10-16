@@ -62,7 +62,7 @@ yellowstone-grpc-proto = { workspace = true }
 [dev-dependencies]
 rand = { workspace = true }
 solana-core = { workspace = true, features = ["dev-context-only-utils"] }
-solana-faucet = { workspace = true }
+solana-faucet = { workspace = true, features = ["dev-context-only-utils"] }
 solana-fee-calculator = { workspace = true }
 solana-pubsub-client = { workspace = true }
 solana-rent = { workspace = true }

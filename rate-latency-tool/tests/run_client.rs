@@ -1,7 +1,7 @@
 use {
     log::info,
     solana_commitment_config::CommitmentConfig,
-    solana_faucet::faucet::run_local_faucet,
+    solana_faucet::faucet::run_local_faucet_with_unique_port_for_tests,
     solana_fee_calculator::FeeRateGovernor,
     solana_hash::Hash,
     solana_keypair::Keypair,
@@ -39,7 +39,7 @@ fn test_transactions_sending() {
     let mint_keypair = Keypair::new();
     let mint_pubkey = mint_keypair.pubkey();
 
-    let faucet_addr = run_local_faucet(mint_keypair, None);
+    let faucet_addr = run_local_faucet_with_unique_port_for_tests(mint_keypair);
 
     let test_validator = TestValidatorGenesis::default()
         .pubsub_config(PubSubConfig {
@@ -108,6 +108,7 @@ fn test_transactions_sending() {
                 handshake_timeout: Duration::from_secs(2),
                 use_legacy_leader_updater: false,
                 use_yellowstone_leader_tracker: false,
+                use_slot_updater_tracker: false,
             },
             TxAnalysisParams {
                 output_csv_file: None,

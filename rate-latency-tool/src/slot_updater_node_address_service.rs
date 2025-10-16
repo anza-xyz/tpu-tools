@@ -28,7 +28,7 @@ pub struct SlotUpdaterNodeAddressService {
 impl SlotUpdaterNodeAddressService {
     pub async fn run(
         rpc_client: Arc<RpcClient>,
-        yellowstone_url: String,
+        bind: String,
         config: LeaderTpuCacheServiceConfig,
         cancel: CancellationToken,
     ) -> Result<Self, NodeAddressServiceError> {
@@ -37,7 +37,7 @@ impl SlotUpdaterNodeAddressService {
             .await?;
 
         let (slot_receiver, slot_update_service) =
-            SlotUpdateService::run(start_slot, yellowstone_url, cancel.clone()).await?;
+            SlotUpdateService::run(start_slot, bind, cancel.clone()).await?;
         let (leaders_receiver, leader_cache_service) =
             LeaderTpuCacheService::run(rpc_client, slot_receiver.clone(), config, cancel).await?;
 
@@ -105,7 +105,7 @@ impl SlotUpdateService {
                                 let data = &buf[..len];
                                 match serde_json::from_slice::<SlotMessage>(data) {
                                     Ok(msg) => {
-                                        info!("Received SlotMessage from {from}: {:?}", msg);
+                                        trace!("Received SlotMessage from {from}: {:?}", msg);
                                         let current_slot = match msg.status {
                                             SlotStatus::FirstShredReceived => msg.slot,
                                             SlotStatus::Completed => msg.slot.saturating_add(1),
@@ -114,9 +114,11 @@ impl SlotUpdateService {
                                         recent_slots.record_slot(current_slot);
                                         let cached_estimated_slot = slot_receiver.borrow().0;
                                         let estimated_slot = recent_slots.estimate_current_slot();
-                                        info!("slot received: {}, status: {:?}, estimated_slot: {}", msg.slot, msg.status, estimated_slot);
+                                        debug!("Received slot update: {}, {}, {:?}", msg.created_at, msg.slot, msg.status);
+                                        debug!("slot received: {}, status: {:?}, estimated_slot: {}, timestamp: {}",
+                                            msg.slot, msg.status, estimated_slot, msg.created_at);
                                         if cached_estimated_slot < estimated_slot {
-                                            slot_sender.send((estimated_slot, timestamp()))
+                                            slot_sender.send((estimated_slot, msg.created_at))
                                                 .expect("Failed to send slot update");
                                         }
                                      }
@@ -168,13 +170,13 @@ struct SlotMessage {
 
 #[derive(Debug, Clone, PartialEq)]
 enum SlotStatus {
+    Processed,
+    Rooted,
+    Confirmed,
     FirstShredReceived,
     Completed,
     CreatedBank,
-    Frozen,
-    Dead,
-    OptimisticConfirmation,
-    Root,
+    Dead(String),
 }
 
 impl<'de> Deserialize<'de> for SlotStatus {
@@ -184,23 +186,23 @@ impl<'de> Deserialize<'de> for SlotStatus {
     {
         let s = String::deserialize(deserializer)?;
         match s.as_str() {
+            "processed" => Ok(SlotStatus::Processed),
+            "rooted" => Ok(SlotStatus::Rooted),
+            "confirmed" => Ok(SlotStatus::Confirmed),
             "first_shred_received" => Ok(SlotStatus::FirstShredReceived),
             "completed" => Ok(SlotStatus::Completed),
             "created_bank" => Ok(SlotStatus::CreatedBank),
-            "frozen" => Ok(SlotStatus::Frozen),
-            "dead" => Ok(SlotStatus::Dead),
-            "optimistic_confirmation" => Ok(SlotStatus::OptimisticConfirmation),
-            "root" | "rooted" => Ok(SlotStatus::Root), // support both naming styles
+            "dead" => Ok(SlotStatus::Dead("dead".to_string())),
             _ => Err(serde::de::Error::unknown_variant(
                 &s,
                 &[
+                    "processed",
+                    "rooted",
+                    "confirmed",
                     "first_shred_received",
                     "completed",
                     "created_bank",
-                    "frozen",
                     "dead",
-                    "optimistic_confirmation",
-                    "root",
                 ],
             )),
         }

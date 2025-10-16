@@ -146,6 +146,13 @@ pub struct ExecutionParams {
         help = "Use yellowstone grpc for slot updates instead of ws."
     )]
     pub use_yellowstone_leader_tracker: bool,
+
+    #[clap(
+        long,
+        conflicts_with = "use-yellowstone-leader-tracker",
+        help = "Use custom geyser slot updates plugin for slot updates instead of ws."
+    )]
+    pub use_slot_updater_tracker: bool,
 }
 
 #[derive(Args, Copy, Clone, Debug, PartialEq, Eq)]
@@ -261,6 +268,7 @@ mod tests {
                 handshake_timeout: Duration::from_secs(2),
                 use_legacy_leader_updater: false,
                 use_yellowstone_leader_tracker: false,
+                use_slot_updater_tracker: false,
             },
         )
     }

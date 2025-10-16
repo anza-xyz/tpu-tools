@@ -64,6 +64,7 @@ pub async fn run_client(
         handshake_timeout,
         use_legacy_leader_updater,
         use_yellowstone_leader_tracker,
+        use_slot_updater_tracker,
     }: ExecutionParams,
     TxAnalysisParams {
         output_csv_file,
@@ -169,6 +170,8 @@ pub async fn run_client(
         };
         if use_yellowstone_leader_tracker {
             LeaderUpdaterType::YellowstoneLeaderTracker(config)
+        } else if use_slot_updater_tracker {
+            LeaderUpdaterType::SlotUpdaterTracker(config)
         } else {
             LeaderUpdaterType::LeaderTracker(config)
         }

@@ -2,6 +2,7 @@ use {
     crate::{
         error::RateLatencyToolError,
         run_rate_latency_tool_scheduler::{LeaderSlotEstimator, LeaderUpdaterWithSlot},
+        slot_updater_node_address_service::SlotUpdaterNodeAddressService,
         yellowstone_leader_tracker::YellowstoneNodeAddressService,
     },
     async_trait::async_trait,
@@ -27,6 +28,7 @@ pub enum LeaderUpdaterType {
     Legacy,
     LeaderTracker(LeaderTpuCacheServiceConfig),
     YellowstoneLeaderTracker(LeaderTpuCacheServiceConfig),
+    SlotUpdaterTracker(LeaderTpuCacheServiceConfig),
 }
 
 pub async fn create_leader_updater(
@@ -68,6 +70,16 @@ pub async fn create_leader_updater(
                 rpc_client,
                 yellowstone_url.unwrap(),
                 config,
+                cancel,
+            )
+            .await?;
+            Ok(Box::new(leader_tpu_service))
+        }
+        LeaderUpdaterType::SlotUpdaterTracker(leader_tpu_cache_service_config) => {
+            let leader_tpu_service = SlotUpdaterNodeAddressService::run(
+                rpc_client,
+                "0.0.0.0:9000".to_string(),
+                leader_tpu_cache_service_config,
                 cancel,
             )
             .await?;

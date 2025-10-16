@@ -53,7 +53,7 @@ impl LeaderUpdateReceiver {
 
 impl LeaderTpuCacheService {
     pub async fn run(
-        rpc_client: Arc<impl Rpc + 'static>,
+        rpc_client: Arc<impl ClusterInfoProvider + 'static>,
         mut slot_receiver: SlotReceiver,
         config: LeaderTpuCacheServiceConfig,
         cancel: CancellationToken,
@@ -197,7 +197,7 @@ impl LeaderTpuCacheService {
     }
 
     async fn initialize_state(
-        rpc_client: &impl Rpc,
+        rpc_client: &impl ClusterInfoProvider,
         slot_receiver: SlotReceiver,
         max_attempts: usize,
     ) -> Result<(LeaderTpuMap, EpochInfo, SlotLeaders), NodeAddressServiceError> {
@@ -284,7 +284,7 @@ struct LeaderTpuMap {
 }
 
 impl LeaderTpuMap {
-    async fn new(rpc_client: &impl Rpc) -> Result<Self, NodeAddressServiceError> {
+    async fn new(rpc_client: &impl ClusterInfoProvider) -> Result<Self, NodeAddressServiceError> {
         let leader_tpu_map = rpc_client.leader_tpu_map().await?;
         Ok(Self {
             last_cluster_refresh: Instant::now(),
@@ -305,7 +305,7 @@ struct SlotLeaders {
 
 impl SlotLeaders {
     async fn new(
-        rpc_client: &impl Rpc,
+        rpc_client: &impl ClusterInfoProvider,
         estimated_current_slot: Slot,
         slots_in_epoch: Slot,
     ) -> Result<Self, NodeAddressServiceError> {
@@ -339,7 +339,7 @@ struct EpochInfo {
 
 impl EpochInfo {
     async fn new(
-        rpc_client: &impl Rpc,
+        rpc_client: &impl ClusterInfoProvider,
         estimated_current_slot: Slot,
     ) -> Result<Self, NodeAddressServiceError> {
         let (slots_in_epoch, last_slot_in_epoch) =
@@ -352,7 +352,7 @@ impl EpochInfo {
 }
 
 #[async_trait]
-pub trait Rpc: Send + Sync {
+pub trait ClusterInfoProvider: Send + Sync {
     async fn leader_tpu_map(&self) -> Result<HashMap<Pubkey, SocketAddr>, NodeAddressServiceError>;
     async fn epoch_info(
         &self,
@@ -366,7 +366,7 @@ pub trait Rpc: Send + Sync {
 }
 
 #[async_trait]
-impl Rpc for RpcClient {
+impl ClusterInfoProvider for RpcClient {
     async fn leader_tpu_map(&self) -> Result<HashMap<Pubkey, SocketAddr>, NodeAddressServiceError> {
         let cluster_nodes = self.get_cluster_nodes().await;
         match cluster_nodes {
