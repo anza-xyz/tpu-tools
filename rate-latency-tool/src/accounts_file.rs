@@ -4,6 +4,7 @@ use {
     log::error,
     serde::{Deserialize, Serialize},
     solana_keypair::Keypair,
+    solana_native_token::LAMPORTS_PER_SOL,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_signer::Signer,
     std::{fs::File, io::Write, path::PathBuf, sync::Arc},
@@ -85,18 +86,24 @@ pub async fn create_ephemeral_accounts(
     rpc_client: Arc<RpcClient>,
     authority: Keypair,
     num_payers: usize,
-    payers_account_balance: u64,
+    payers_account_balance_lamports: u64,
     validate_accounts: bool,
 ) -> Result<AccountsFile, StateLoaderError> {
     let accounts_creator = AccountsCreator::new(
         rpc_client.clone(),
         authority,
         num_payers,
-        payers_account_balance,
+        payers_account_balance_lamports,
     );
     let accounts = accounts_creator.create().await?;
     if validate_accounts
-        && !validate_payers(&accounts, rpc_client, num_payers, payers_account_balance).await?
+        && !validate_payers(
+            &accounts,
+            rpc_client,
+            num_payers,
+            payers_account_balance_lamports,
+        )
+        .await?
     {
         return Err(StateLoaderError::AccountsValidationFailure);
     }
@@ -130,7 +137,7 @@ async fn validate_payers(
     AccountsFile { payers, .. }: &AccountsFile,
     rpc_client: Arc<RpcClient>,
     desired_num: usize,
-    desired_balance: u64,
+    desired_balance_lamports: u64,
 ) -> Result<bool, AccountsCreatorError> {
     if payers.len() < desired_num {
         error!(
@@ -141,11 +148,11 @@ async fn validate_payers(
         return Ok(false);
     }
     for payer in payers {
-        let balance = rpc_client.get_balance(&payer.pubkey()).await?;
-        if balance < desired_balance {
+        let balance_sol: u64 = rpc_client.get_balance(&payer.pubkey()).await?;
+        if balance_sol * LAMPORTS_PER_SOL < desired_balance_lamports {
             error!(
-                "Insufficient balance {} for account {}.",
-                balance,
+                "Insufficient balance {}SOL for account {}.",
+                balance_sol,
                 payer.pubkey()
             );
             return Ok(false);

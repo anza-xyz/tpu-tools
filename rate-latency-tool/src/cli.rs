@@ -5,6 +5,7 @@ use {
         input_validators::normalize_to_url_if_moniker,
     },
     solana_commitment_config::CommitmentConfig,
+    solana_native_token::LAMPORTS_PER_SOL,
     std::{net::SocketAddr, path::PathBuf},
     tokio::time::Duration,
 };
@@ -173,8 +174,9 @@ pub struct AccountParams {
 
     #[clap(
         long,
-        default_value = "1",
-        help = "Payer account balance in SOL,\n\
+        default_value = "1SOL",
+        parse(try_from_str = parse_balance),
+        help = "Payer account balance in SOL or LAMPORTS,\n\
                 used to fund creation of other accounts and for transactions.\n"
     )]
     pub payer_account_balance: u64,
@@ -228,6 +230,22 @@ fn parse_duration_ms(s: &str) -> Result<Duration, &'static str> {
         .map_err(|_| "failed to parse duration in milliseconds")
 }
 
+/// Parses strings like "1SOL", "0.5SOL", "1000000000LAMPORTS" into lamports.
+fn parse_balance(s: &str) -> Result<u64, String> {
+    let s = s.trim().to_uppercase();
+
+    if let Some(sol_value) = s.strip_suffix("SOL") {
+        let sol: f64 = sol_value.parse::<f64>().map_err(|e| e.to_string())?;
+        Ok((sol * LAMPORTS_PER_SOL as f64) as u64)
+    } else if let Some(lamports_str) = s.strip_suffix("LAMPORTS") {
+        lamports_str.parse::<u64>().map_err(|e| e.to_string())
+    } else {
+        // Default to SOL if no suffix
+        let sol: f64 = s.parse::<f64>().map_err(|e| e.to_string())?;
+        Ok((sol * LAMPORTS_PER_SOL as f64) as u64)
+    }
+}
+
 pub fn build_cli_parameters() -> ClientCliParameters {
     ClientCliParameters::parse()
 }
@@ -245,7 +263,7 @@ mod tests {
             vec!["--num-payers", "256", "--payer-account-balance", "1"],
             AccountParams {
                 num_payers: 256,
-                payer_account_balance: 1,
+                payer_account_balance: 1 * LAMPORTS_PER_SOL,
             },
         )
     }
@@ -395,5 +413,31 @@ mod tests {
         let actual = cli.unwrap();
 
         assert_eq!(actual, expected_parameters);
+    }
+
+    #[test]
+    fn test_parse_balance() {
+        assert_eq!(parse_balance("1SOL").unwrap(), 1_000_000_000);
+        assert_eq!(parse_balance("0.5SOL").unwrap(), 500_000_000);
+        assert_eq!(parse_balance("2.25SOL").unwrap(), 2_250_000_000);
+
+        assert_eq!(parse_balance(" 3sol ").unwrap(), 3_000_000_000);
+        assert_eq!(parse_balance("1000000000LAMPORTS").unwrap(), 1_000_000_000);
+        assert_eq!(parse_balance("42lamports").unwrap(), 42);
+
+        // No suffix → treat as SOL
+        assert_eq!(parse_balance("1").unwrap(), 1_000_000_000);
+        assert_eq!(parse_balance("0.1").unwrap(), 100_000_000);
+
+        assert!(parse_balance("").is_err());
+        assert!(parse_balance("abc").is_err());
+        assert!(parse_balance("1.2.3SOL").is_err());
+        assert!(parse_balance("SOL").is_err());
+
+        // 0.000000001 SOL == 1 lamport
+        assert_eq!(parse_balance("0.000000001SOL").unwrap(), 1);
+
+        // Tiny fractions under one lamport get truncated down
+        assert_eq!(parse_balance("0.0000000009SOL").unwrap(), 0);
     }
 }

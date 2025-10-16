@@ -10,7 +10,6 @@ use {
     solana_hash::Hash,
     solana_keypair::Keypair,
     solana_message::Message,
-    solana_native_token::LAMPORTS_PER_SOL,
     solana_pubkey::Pubkey,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::client_error::Error as ClientError,
@@ -49,7 +48,7 @@ pub struct AccountsCreator {
     rpc_client: Arc<RpcClient>,
     authority: Keypair,
     num_payers: usize,
-    payer_account_balance: u64,
+    payer_account_balance_lamports: u64,
 }
 
 impl AccountsCreator {
@@ -57,13 +56,13 @@ impl AccountsCreator {
         rpc_client: Arc<RpcClient>,
         authority: Keypair,
         num_payers: usize,
-        payer_account_balance: u64,
+        payer_account_balance_lamports: u64,
     ) -> Self {
         Self {
             rpc_client,
             authority,
             num_payers,
-            payer_account_balance,
+            payer_account_balance_lamports,
         }
     }
 
@@ -93,8 +92,8 @@ impl AccountsCreator {
         let rpc_client = &*self.rpc_client;
 
         // Compute the minimum budget for payers
-        let min_balance_to_create_account = self.request_create_account_tx_fee(0).await?
-            + self.payer_account_balance * LAMPORTS_PER_SOL;
+        let min_balance_to_create_account =
+            self.request_create_account_tx_fee(0).await? + self.payer_account_balance_lamports;
         let required_balance = self.num_payers as u64 * min_balance_to_create_account;
         let actual_balance = rpc_client.get_balance(&authority_pubkey).await?;
         info!("Authority balance {actual_balance}, min required balance {required_balance}");
@@ -150,7 +149,7 @@ impl AccountsCreator {
             &self.rpc_client,
             &[self.authority.insecure_clone()],
             self.num_payers,
-            self.payer_account_balance * LAMPORTS_PER_SOL,
+            self.payer_account_balance_lamports,
             MAX_CONTINUOUS_FAILED_ATTEMPTS,
         )
         .await
@@ -172,7 +171,7 @@ fn create_transaction_batch(
     authorities: &[Keypair],
     blockhash: Hash,
     current_batch_size: usize,
-    balance: u64,
+    balance_lamports: u64,
 ) -> Vec<(Transaction, Keypair)> {
     let mut authorities_iter = authorities.iter().cycle();
     (0..current_batch_size)
@@ -184,7 +183,7 @@ fn create_transaction_batch(
             let instructions = vec![system_instruction::create_account(
                 &authority.pubkey(),
                 &new_account.pubkey(),
-                balance,
+                balance_lamports,
                 0,
                 &system_program::id(),
             )];
@@ -241,7 +240,7 @@ async fn create_accounts(
     rpc_client: &Arc<RpcClient>,
     authorities: &[Keypair],
     num_accounts: usize,
-    balance: u64,
+    balance_lamports: u64,
     max_continuos_failed_attempts: usize,
 ) -> Vec<Keypair> {
     // It makes sense to send concurrently subset
@@ -278,7 +277,7 @@ async fn create_accounts(
         let blockhash = blockhash.unwrap();
 
         let transaction_batch =
-            create_transaction_batch(authorities, blockhash, current_batch_size, balance);
+            create_transaction_batch(authorities, blockhash, current_batch_size, balance_lamports);
         let newly_created_accounts = send_transaction_batch(rpc_client, transaction_batch).await;
         num_continuous_failed_attempts = if newly_created_accounts.is_empty() {
             num_continuous_failed_attempts + 1
