@@ -8,7 +8,7 @@ use {
     solana_pubsub_client::pubsub_client::PubsubClient,
     solana_rate_latency_tool::{
         accounts_file::create_ephemeral_accounts,
-        cli::{AccountParams, ExecutionParams, TxAnalysisParams},
+        cli::{AccountParams, ExecutionParams, LeaderTracker, TxAnalysisParams},
         run_client::run_client,
     },
     solana_rent::Rent,
@@ -104,11 +104,8 @@ fn test_transactions_sending() {
                 send_fanout: 1,
                 send_interval: Duration::from_millis(100),
                 compute_unit_price: Some(100),
-                pinned_address: None,
                 handshake_timeout: Duration::from_secs(2),
-                use_legacy_leader_updater: false,
-                use_yellowstone_leader_tracker: false,
-                use_slot_updater_tracker: false,
+                leader_tracker: LeaderTracker::NodeAddressService,
             },
             TxAnalysisParams {
                 output_csv_file: None,

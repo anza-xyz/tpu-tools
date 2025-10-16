@@ -102,9 +102,6 @@ pub struct ExecutionParams {
     )]
     pub duration: Option<Duration>,
 
-    #[clap(long, help = "Pinned address to send transactions.")]
-    pub pinned_address: Option<SocketAddr>,
-
     #[clap(
         long,
         parse(try_from_str = parse_duration_ms),
@@ -137,22 +134,31 @@ pub struct ExecutionParams {
     )]
     pub handshake_timeout: Duration,
 
-    #[clap(long, help = "Use old code for leader updates tracking.")]
-    pub use_legacy_leader_updater: bool,
+    #[clap(subcommand)]
+    pub leader_tracker: LeaderTracker,
+}
+
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+#[clap(rename_all = "kebab-case")]
+pub enum LeaderTracker {
+    #[clap(
+        help = "Use pinned address to send transactions to, which means we are not interested in leader slot updates."
+    )]
+    Pinned { address: SocketAddr },
 
     #[clap(
-        long,
-        requires = "yellowstone-url",
-        help = "Use yellowstone grpc for slot updates instead of ws."
+        help = "Use old ws tracking code for slot updates. WS url is generated from the RPC url."
     )]
-    pub use_yellowstone_leader_tracker: bool,
+    Legacy,
 
-    #[clap(
-        long,
-        conflicts_with = "use-yellowstone-leader-tracker",
-        help = "Use custom geyser slot updates plugin for slot updates instead of ws."
-    )]
-    pub use_slot_updater_tracker: bool,
+    #[clap(help = "Use ws for slot updates. WS url is generated from the RPC url.")]
+    NodeAddressService,
+
+    #[clap(help = "Use yellowstone grpc for slot updates instead of ws.")]
+    Yellowstone { url: String },
+
+    #[clap(help = "Use custom slot updater geyser plugin which sends slot updates over UDP.")]
+    SlotUpdater { bind_address: SocketAddr },
 }
 
 #[derive(Args, Copy, Clone, Debug, PartialEq, Eq)]
@@ -264,11 +270,8 @@ mod tests {
                 send_interval: Duration::from_millis(100),
                 send_fanout: 3,
                 compute_unit_price: None,
-                pinned_address: None,
                 handshake_timeout: Duration::from_secs(2),
-                use_legacy_leader_updater: false,
-                use_yellowstone_leader_tracker: false,
-                use_slot_updater_tracker: false,
+                leader_tracker: LeaderTracker::NodeAddressService,
             },
         )
     }
@@ -301,6 +304,7 @@ mod tests {
         args.extend(account_args.iter());
         let (analysis_args, analysis_params) = get_common_analysis_params();
         args.extend(analysis_args.iter());
+        args.push("node-address-service");
 
         let expected_parameters = ClientCliParameters {
             json_rpc_url: "http://localhost:8899".to_string(),
@@ -336,6 +340,7 @@ mod tests {
         args.extend(exec_args.iter());
         let (analysis_args, analysis_params) = get_common_analysis_params();
         args.extend(analysis_args.iter());
+        args.push("node-address-service");
 
         let expected_parameters = ClientCliParameters {
             json_rpc_url: "http://localhost:8899".to_string(),

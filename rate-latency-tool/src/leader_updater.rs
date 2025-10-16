@@ -25,16 +25,14 @@ use {
 
 pub enum LeaderUpdaterType {
     Pinned(SocketAddr),
-    Legacy,
-    LeaderTracker(LeaderTpuCacheServiceConfig),
-    YellowstoneLeaderTracker(LeaderTpuCacheServiceConfig),
-    SlotUpdaterTracker(LeaderTpuCacheServiceConfig),
+    Legacy(String),
+    LeaderTracker((String, LeaderTpuCacheServiceConfig)),
+    YellowstoneLeaderTracker((String, LeaderTpuCacheServiceConfig)),
+    SlotUpdaterTracker((SocketAddr, LeaderTpuCacheServiceConfig)),
 }
 
 pub async fn create_leader_updater(
     rpc_client: Arc<RpcClient>,
-    websocket_url: String,
-    yellowstone_url: Option<String>,
     updater_type: LeaderUpdaterType,
     cancel: CancellationToken,
 ) -> Result<Box<dyn LeaderUpdaterWithSlot>, RateLatencyToolError> {
@@ -42,7 +40,7 @@ pub async fn create_leader_updater(
         LeaderUpdaterType::Pinned(pinned_address) => Ok(Box::new(PinnedLeaderUpdater {
             address: vec![pinned_address],
         })),
-        LeaderUpdaterType::Legacy => {
+        LeaderUpdaterType::Legacy(websocket_url) => {
             let exit = Arc::new(AtomicBool::new(false));
             let leader_tpu_service =
                 LeaderTpuService::new(rpc_client, &websocket_url, Protocol::QUIC, exit.clone())
@@ -56,29 +54,21 @@ pub async fn create_leader_updater(
                 exit,
             }))
         }
-        LeaderUpdaterType::LeaderTracker(config) => {
+        LeaderUpdaterType::LeaderTracker((websocket_url, config)) => {
             let leader_tpu_service =
                 NodeAddressService::run(rpc_client, &websocket_url, config, cancel).await?;
             Ok(Box::new(leader_tpu_service))
         }
-        LeaderUpdaterType::YellowstoneLeaderTracker(config) => {
-            assert!(
-                yellowstone_url.is_some(),
-                "Yellowstone URL should be specified for yellowstone leader tracker"
-            );
-            let leader_tpu_service = YellowstoneNodeAddressService::run(
-                rpc_client,
-                yellowstone_url.unwrap(),
-                config,
-                cancel,
-            )
-            .await?;
+        LeaderUpdaterType::YellowstoneLeaderTracker((yellowstone_url, config)) => {
+            let leader_tpu_service =
+                YellowstoneNodeAddressService::run(rpc_client, yellowstone_url, config, cancel)
+                    .await?;
             Ok(Box::new(leader_tpu_service))
         }
-        LeaderUpdaterType::SlotUpdaterTracker(leader_tpu_cache_service_config) => {
+        LeaderUpdaterType::SlotUpdaterTracker((bind, leader_tpu_cache_service_config)) => {
             let leader_tpu_service = SlotUpdaterNodeAddressService::run(
                 rpc_client,
-                "0.0.0.0:9000".to_string(),
+                bind,
                 leader_tpu_cache_service_config,
                 cancel,
             )

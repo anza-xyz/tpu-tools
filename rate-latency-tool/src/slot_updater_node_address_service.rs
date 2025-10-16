@@ -28,7 +28,7 @@ pub struct SlotUpdaterNodeAddressService {
 impl SlotUpdaterNodeAddressService {
     pub async fn run(
         rpc_client: Arc<RpcClient>,
-        bind: String,
+        bind_address: SocketAddr,
         config: LeaderTpuCacheServiceConfig,
         cancel: CancellationToken,
     ) -> Result<Self, NodeAddressServiceError> {
@@ -37,7 +37,7 @@ impl SlotUpdaterNodeAddressService {
             .await?;
 
         let (slot_receiver, slot_update_service) =
-            SlotUpdateService::run(start_slot, bind, cancel.clone()).await?;
+            SlotUpdateService::run(start_slot, bind_address, cancel.clone()).await?;
         let (leaders_receiver, leader_cache_service) =
             LeaderTpuCacheService::run(rpc_client, slot_receiver.clone(), config, cancel).await?;
 
@@ -80,7 +80,7 @@ pub struct SlotUpdateService {
 impl SlotUpdateService {
     pub async fn run(
         current_slot: Slot,
-        bind: String,
+        bind_address: SocketAddr,
         cancel: CancellationToken,
     ) -> Result<(SlotReceiver, Self), NodeAddressServiceError> {
         let mut recent_slots = RecentLeaderSlots::new();
@@ -88,9 +88,6 @@ impl SlotUpdateService {
         let slot_receiver_clone = slot_receiver.clone();
         let cancel_clone = cancel.clone();
 
-        let bind_address: SocketAddr = bind
-            .parse()
-            .map_err(|_e| NodeAddressServiceError::InitializationFailed)?;
         let socket = UdpSocket::bind(bind_address)
             .await
             .map_err(|_e| NodeAddressServiceError::InitializationFailed)?;

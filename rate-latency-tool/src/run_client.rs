@@ -2,7 +2,7 @@ use {
     crate::{
         accounts_file::AccountsFile,
         blockhash_updater::BlockhashUpdater,
-        cli::{ExecutionParams, TxAnalysisParams},
+        cli::{ExecutionParams, LeaderTracker, TxAnalysisParams},
         csv_writer::{run_csv_writer, CSVRecord},
         error::RateLatencyToolError,
         leader_updater::{create_leader_updater, LeaderUpdaterType},
@@ -60,11 +60,8 @@ pub async fn run_client(
         send_fanout,
         send_interval: rate,
         compute_unit_price,
-        pinned_address,
         handshake_timeout,
-        use_legacy_leader_updater,
-        use_yellowstone_leader_tracker,
-        use_slot_updater_tracker,
+        leader_tracker,
     }: ExecutionParams,
     TxAnalysisParams {
         output_csv_file,
@@ -82,8 +79,6 @@ pub async fn run_client(
     };
 
     let mut tasks = JoinSet::<Result<(), RateLatencyToolError>>::new();
-
-    let yellowstone_url_clone = yellowstone_url.clone();
 
     let (tx_tracker_sender, tx_tracker_receiver) = mpsc::unbounded_channel();
     // If yellowstone is active, we want to receive transactions for some time
@@ -156,36 +151,36 @@ pub async fn run_client(
         Ok(())
     });
 
-    let updater_type = if let Some(pinned_address) = pinned_address {
-        LeaderUpdaterType::Pinned(pinned_address)
-    } else if use_legacy_leader_updater {
-        debug!("Using legacy leader updater");
-        LeaderUpdaterType::Legacy
-    } else {
-        debug!("Using leader tracker updater");
-        let config = LeaderTpuCacheServiceConfig {
-            lookahead_leaders: 4,
-            refresh_nodes_info_every: Duration::from_secs(30),
-            max_consecutive_failures: 5,
-        };
-        if use_yellowstone_leader_tracker {
-            LeaderUpdaterType::YellowstoneLeaderTracker(config)
-        } else if use_slot_updater_tracker {
-            LeaderUpdaterType::SlotUpdaterTracker(config)
-        } else {
-            LeaderUpdaterType::LeaderTracker(config)
+    let config = LeaderTpuCacheServiceConfig {
+        lookahead_leaders: 4,
+        refresh_nodes_info_every: Duration::from_secs(30),
+        max_consecutive_failures: 5,
+    };
+    let updater_type = match leader_tracker {
+        LeaderTracker::Pinned { address } => {
+            debug!("Using pinned leader updater");
+            LeaderUpdaterType::Pinned(address)
+        }
+        LeaderTracker::Legacy => {
+            debug!("Using legacy leader updater");
+            LeaderUpdaterType::Legacy(websocket_url)
+        }
+        LeaderTracker::Yellowstone { url } => {
+            debug!("Using yellowstone leader tracker updater");
+            LeaderUpdaterType::YellowstoneLeaderTracker((url, config))
+        }
+        LeaderTracker::SlotUpdater { bind_address } => {
+            debug!("Using slot updater leader tracker updater");
+            LeaderUpdaterType::SlotUpdaterTracker((bind_address, config))
+        }
+        LeaderTracker::NodeAddressService => {
+            debug!("Using node address service leader tracker updater");
+            LeaderUpdaterType::LeaderTracker((websocket_url, config))
         }
     };
 
-    //
-    let leader_updater = create_leader_updater(
-        rpc_client.clone(),
-        websocket_url,
-        yellowstone_url_clone,
-        updater_type,
-        cancel.clone(),
-    )
-    .await?;
+    let leader_updater =
+        create_leader_updater(rpc_client.clone(), updater_type, cancel.clone()).await?;
 
     let stats = Arc::new(SendTransactionStats::default());
     tasks.spawn({
