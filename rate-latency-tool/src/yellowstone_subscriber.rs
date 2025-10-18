@@ -57,7 +57,7 @@ pub(crate) struct ClientConfig {
 pub(crate) async fn create_geyser_client(
     ClientConfig {
         ca_certificate,
-        yellowstone_url: endpoint,
+        yellowstone_url,
         x_token,
         max_decoding_message_size,
         timeout,
@@ -71,23 +71,28 @@ pub(crate) async fn create_geyser_client(
 
     // TODO(klykov): not sure if I need to set up all these or the defaults
     // are sane enough.
-    let builder = GeyserGrpcClient::build_from_shared(endpoint)?
+    let builder = GeyserGrpcClient::build_from_shared(yellowstone_url)?
         .x_token(x_token)?
         .tls_config(tls_config)?
         .max_decoding_message_size(max_decoding_message_size)
         .connect_timeout(timeout)
         .keep_alive_timeout(timeout)
+        .tcp_nodelay(true)
+        .http2_adaptive_window(true)
         .timeout(timeout);
     let client = builder.connect().await?;
     Ok(client)
 }
 
-pub(crate) fn create_client_config(yellowstone_url: &str) -> ClientConfig {
+pub(crate) fn create_client_config(
+    yellowstone_url: &str,
+    yellowstone_token: Option<&str>,
+) -> ClientConfig {
     ClientConfig {
         ca_certificate: None, // TODO: set this to a default CA certificate path
         yellowstone_url: yellowstone_url.to_string(),
-        x_token: None, // TODO: set this to a default token if needed
-        max_decoding_message_size: 10 * 1024 * 1024, // 10 MB
+        x_token: yellowstone_token.map(|token| token.to_string()),
+        max_decoding_message_size: 16 * 1024 * 1024,
         timeout: Duration::from_secs(30), // 30 seconds
     }
 }
@@ -123,11 +128,12 @@ fn build_request(payers_pubkeys: &[Pubkey]) -> SubscribeRequest {
 
 pub async fn run_yellowstone_subscriber(
     yellowstone_url: &str,
+    yellowstone_token: Option<&str>,
     account_pubkeys: &[Pubkey],
     csv_sender: Sender<CSVRecord>,
     cancel: CancellationToken,
 ) -> Result<(), YellowstoneError> {
-    let client_config = create_client_config(yellowstone_url);
+    let client_config = create_client_config(yellowstone_url, yellowstone_token);
     let mut client = create_geyser_client(client_config).await?;
 
     let request = build_request(account_pubkeys);

@@ -40,6 +40,7 @@ impl YellowstoneNodeAddressService {
     pub async fn run(
         rpc_client: Arc<RpcClient>,
         yellowstone_url: String,
+        yellowstone_token: Option<&str>,
         config: LeaderTpuCacheServiceConfig,
         cancel: CancellationToken,
     ) -> Result<Self, NodeAddressServiceError> {
@@ -47,8 +48,13 @@ impl YellowstoneNodeAddressService {
             .get_slot_with_commitment(CommitmentConfig::processed())
             .await?;
 
-        let (slot_receiver, slot_update_service) =
-            YellowstoneSlotUpdateService::run(start_slot, yellowstone_url, cancel.clone()).await?;
+        let (slot_receiver, slot_update_service) = YellowstoneSlotUpdateService::run(
+            start_slot,
+            yellowstone_url,
+            yellowstone_token,
+            cancel.clone(),
+        )
+        .await?;
         let (leaders_receiver, leader_cache_service) =
             LeaderTpuCacheService::run(rpc_client, slot_receiver.clone(), config, cancel).await?;
 
@@ -96,13 +102,14 @@ impl YellowstoneSlotUpdateService {
     pub async fn run(
         current_slot: Slot,
         yellowstone_url: String,
+        yellowstone_token: Option<&str>,
         cancel: CancellationToken,
     ) -> Result<(SlotReceiver, Self), NodeAddressServiceError> {
         assert!(
             !yellowstone_url.is_empty(),
             "Yellowstone URL must not be empty"
         );
-        let client_config = create_client_config(&yellowstone_url);
+        let client_config = create_client_config(&yellowstone_url, yellowstone_token);
         let mut client = create_geyser_client(client_config).await.map_err(|e| {
             error!("Failed to create Yellowstone client: {e:?}");
             NodeAddressServiceError::InitializationFailed

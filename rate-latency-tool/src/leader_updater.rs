@@ -27,7 +27,7 @@ pub enum LeaderUpdaterType {
     Pinned(SocketAddr),
     Legacy(String),
     LeaderTracker((String, LeaderTpuCacheServiceConfig)),
-    YellowstoneLeaderTracker((String, LeaderTpuCacheServiceConfig)),
+    YellowstoneLeaderTracker((String, Option<String>, LeaderTpuCacheServiceConfig)),
     SlotUpdaterTracker((SocketAddr, LeaderTpuCacheServiceConfig)),
 }
 
@@ -59,10 +59,19 @@ pub async fn create_leader_updater(
                 NodeAddressService::run(rpc_client, &websocket_url, config, cancel).await?;
             Ok(Box::new(leader_tpu_service))
         }
-        LeaderUpdaterType::YellowstoneLeaderTracker((yellowstone_url, config)) => {
-            let leader_tpu_service =
-                YellowstoneNodeAddressService::run(rpc_client, yellowstone_url, config, cancel)
-                    .await?;
+        LeaderUpdaterType::YellowstoneLeaderTracker((
+            yellowstone_url,
+            yellowstone_token,
+            config,
+        )) => {
+            let leader_tpu_service = YellowstoneNodeAddressService::run(
+                rpc_client,
+                yellowstone_url,
+                yellowstone_token.as_deref(),
+                config,
+                cancel,
+            )
+            .await?;
             Ok(Box::new(leader_tpu_service))
         }
         LeaderUpdaterType::SlotUpdaterTracker((bind, leader_tpu_cache_service_config)) => {

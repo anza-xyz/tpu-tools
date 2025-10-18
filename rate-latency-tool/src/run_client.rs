@@ -66,6 +66,7 @@ pub async fn run_client(
     TxAnalysisParams {
         output_csv_file,
         yellowstone_url,
+        yellowstone_token,
     }: TxAnalysisParams,
     cancel: CancellationToken,
 ) -> Result<(), RateLatencyToolError> {
@@ -110,8 +111,14 @@ pub async fn run_client(
             .collect();
         let cancel = cancel.clone();
         tasks.spawn(async move {
-            run_yellowstone_subscriber(&yellowstone_url, &account_pubkeys, csv_sender, cancel)
-                .await?;
+            run_yellowstone_subscriber(
+                &yellowstone_url,
+                yellowstone_token.as_deref(),
+                &account_pubkeys,
+                csv_sender,
+                cancel,
+            )
+            .await?;
             Ok(())
         });
     }
@@ -165,9 +172,9 @@ pub async fn run_client(
             debug!("Using legacy leader updater");
             LeaderUpdaterType::Legacy(websocket_url)
         }
-        LeaderTracker::Yellowstone { url } => {
+        LeaderTracker::Yellowstone { url, token } => {
             debug!("Using yellowstone leader tracker updater");
-            LeaderUpdaterType::YellowstoneLeaderTracker((url, config))
+            LeaderUpdaterType::YellowstoneLeaderTracker((url, token, config))
         }
         LeaderTracker::SlotUpdater { bind_address } => {
             debug!("Using slot updater leader tracker updater");

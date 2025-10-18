@@ -156,7 +156,12 @@ pub enum LeaderTracker {
     NodeAddressService,
 
     #[clap(help = "Use yellowstone grpc for slot updates instead of ws.")]
-    Yellowstone { url: String },
+    Yellowstone {
+        /// gRPC endpoint URL (positional argument)
+        url: String,
+        /// gRPC token (optional)
+        token: Option<String>,
+    },
 
     #[clap(help = "Use custom slot updater geyser plugin which sends slot updates over UDP.")]
     SlotUpdater { bind_address: SocketAddr },
@@ -216,6 +221,14 @@ pub struct TxAnalysisParams {
         help = "Yellowstone url."
     )]
     pub yellowstone_url: Option<String>,
+
+    #[clap(
+        long,
+        validator = parse_url,
+        requires = "yellowstone-url",
+        help = "Yellowstone token."
+    )]
+    pub yellowstone_token: Option<String>,
 }
 
 fn parse_duration_sec(s: &str) -> Result<Duration, &'static str> {
@@ -307,6 +320,7 @@ mod tests {
             TxAnalysisParams {
                 output_csv_file: Some(PathBuf::from(csv_file.to_string())),
                 yellowstone_url: Some(yellowstone_url.to_string()),
+                yellowstone_token: None,
             },
         )
     }
