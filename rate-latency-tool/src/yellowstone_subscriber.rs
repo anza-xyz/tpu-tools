@@ -2,6 +2,7 @@ use {
     crate::csv_writer::CSVRecord,
     futures::stream::StreamExt,
     log::{debug, error, info, warn},
+    solana_clock::Slot,
     solana_pubkey::Pubkey,
     solana_signature::Signature,
     solana_time_utils::timestamp,
@@ -22,7 +23,8 @@ use {
     yellowstone_grpc_proto::{
         geyser::{
             subscribe_update::UpdateOneof, CommitmentLevel, SubscribeRequest,
-            SubscribeRequestFilterTransactions, SubscribeUpdateTransaction,
+            SubscribeRequestFilterBlocksMeta, SubscribeRequestFilterTransactions,
+            SubscribeUpdateTransaction,
         },
         tonic::transport::Certificate,
     },
@@ -97,7 +99,7 @@ pub(crate) fn create_client_config(
     }
 }
 
-fn build_request(payers_pubkeys: &[Pubkey]) -> SubscribeRequest {
+fn build_request(payers_pubkeys: &[Pubkey], subcribe_to_block_meta: bool) -> SubscribeRequest {
     let mut transactions = HashMap::<String, SubscribeRequestFilterTransactions>::new();
     transactions.insert(
         "client".to_string(),
@@ -111,13 +113,18 @@ fn build_request(payers_pubkeys: &[Pubkey]) -> SubscribeRequest {
         },
     );
 
+    let mut blocks_meta: HashMap<String, SubscribeRequestFilterBlocksMeta> = HashMap::new();
+    if subcribe_to_block_meta {
+        blocks_meta.insert("client".to_owned(), SubscribeRequestFilterBlocksMeta {});
+    }
+
     SubscribeRequest {
         accounts: HashMap::new(),
         slots: HashMap::new(),
         transactions,
         transactions_status: HashMap::new(),
         blocks: HashMap::new(),
-        blocks_meta: HashMap::new(),
+        blocks_meta,
         entry: HashMap::new(),
         commitment: Some(CommitmentLevel::Confirmed as i32),
         accounts_data_slice: vec![],
@@ -131,12 +138,13 @@ pub async fn run_yellowstone_subscriber(
     yellowstone_token: Option<&str>,
     account_pubkeys: &[Pubkey],
     csv_sender: Sender<CSVRecord>,
+    num_txs_per_block_sender: Option<Sender<(Slot, usize)>>,
     cancel: CancellationToken,
 ) -> Result<(), YellowstoneError> {
     let client_config = create_client_config(yellowstone_url, yellowstone_token);
     let mut client = create_geyser_client(client_config).await?;
 
-    let request = build_request(account_pubkeys);
+    let request = build_request(account_pubkeys, num_txs_per_block_sender.is_some());
 
     let (_subscribe_tx, mut stream) = client.subscribe_with_request(Some(request)).await?;
 
@@ -164,6 +172,19 @@ pub async fn run_yellowstone_subscriber(
                                 }
                             } else {
                                 warn!("Transaction update without transaction data.");
+                            }
+                        }
+                        Some(UpdateOneof::BlockMeta(msg)) => {
+                            if let Some(sender) = &num_txs_per_block_sender {
+                                sender
+                                    .send((msg.slot, msg.executed_transaction_count as usize))
+                                    .await
+                                    .map_err(|e| {
+                                        error!(
+                                        "Failed to send number of transactions per block: {e:?}"
+                                    );
+                                        YellowstoneError::UnexpectedError
+                                    })?;
                             }
                         }
                         Some(_) => {

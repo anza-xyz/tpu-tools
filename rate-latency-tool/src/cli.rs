@@ -229,6 +229,13 @@ pub struct TxAnalysisParams {
         help = "Yellowstone token."
     )]
     pub yellowstone_token: Option<String>,
+
+    #[clap(
+        long,
+        requires = "yellowstone-url",
+        help = "File to write mapping between slot and number of transactions in the corresponding block."
+    )]
+    pub txs_per_block_file: Option<PathBuf>,
 }
 
 fn parse_duration_sec(s: &str) -> Result<Duration, &'static str> {
@@ -321,6 +328,7 @@ mod tests {
                 output_csv_file: Some(PathBuf::from(csv_file.to_string())),
                 yellowstone_url: Some(yellowstone_url.to_string()),
                 yellowstone_token: None,
+                txs_per_block_file: None,
             },
         )
     }

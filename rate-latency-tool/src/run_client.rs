@@ -7,6 +7,7 @@ use {
         error::RateLatencyToolError,
         leader_updater::{create_leader_updater, LeaderUpdaterType},
         run_rate_latency_tool_scheduler::run_rate_latency_tool_scheduler,
+        txs_per_block_writer::TxsPerBlockWriter,
         yellowstone_subscriber::run_yellowstone_subscriber,
     },
     log::*,
@@ -67,6 +68,7 @@ pub async fn run_client(
         output_csv_file,
         yellowstone_url,
         yellowstone_token,
+        txs_per_block_file,
     }: TxAnalysisParams,
     cancel: CancellationToken,
 ) -> Result<(), RateLatencyToolError> {
@@ -104,6 +106,19 @@ pub async fn run_client(
             }
         });
 
+        let num_txs_per_block_sender = if let Some(txs_per_block_file) = txs_per_block_file {
+            let (num_txs_per_block_sender, num_txs_per_block_receiver) = mpsc::channel(16);
+            let cancel = cancel.clone();
+            tasks.spawn(TxsPerBlockWriter::run(
+                txs_per_block_file,
+                num_txs_per_block_receiver,
+                cancel,
+            ));
+            Some(num_txs_per_block_sender)
+        } else {
+            None
+        };
+
         let account_pubkeys: Vec<Pubkey> = accounts
             .payers
             .iter()
@@ -116,6 +131,7 @@ pub async fn run_client(
                 yellowstone_token.as_deref(),
                 &account_pubkeys,
                 csv_sender,
+                num_txs_per_block_sender,
                 cancel,
             )
             .await?;
