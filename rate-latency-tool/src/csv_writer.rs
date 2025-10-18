@@ -38,6 +38,7 @@ pub struct CSVRecord {
     pub sent_timestamp: u64,
     pub received_timestamp: Option<u64>,
     pub received_subscr_timestamp: Option<u64>,
+    pub index_in_block: Option<u64>,
     pub tx_status: Vec<(TransactionSendStatus, String)>,
 }
 
@@ -51,6 +52,7 @@ impl CSVRecord {
             "sent_timestamp",
             "received_timestamp",
             "received_subscr_timestamp",
+            "index_in_block",
             "tx_status",
         ]
     }
@@ -68,6 +70,9 @@ impl CSVRecord {
                 .map(|ts| ts.to_string())
                 .unwrap_or_default(),
             self.received_subscr_timestamp
+                .map(|ts| ts.to_string())
+                .unwrap_or_default(),
+            self.index_in_block
                 .map(|ts| ts.to_string())
                 .unwrap_or_default(),
             self.tx_status

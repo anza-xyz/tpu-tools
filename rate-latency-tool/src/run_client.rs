@@ -255,6 +255,7 @@ pub async fn run_client(
                         sent_timestamp: timestamp,
                         received_timestamp: None,
                         received_subscr_timestamp: None,
+                        index_in_block: None,
                         tx_status: vec![],
                     };
                     (copy_tx_id, tx, record)

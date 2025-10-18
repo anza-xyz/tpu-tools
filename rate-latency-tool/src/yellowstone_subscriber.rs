@@ -208,6 +208,7 @@ fn try_build_csv_record(
                         .unwrap()
                         .to_string();
                     let received_slot = msg.slot;
+                    let index_in_block = Some(tx.index);
 
                     return Ok(CSVRecord {
                         signature,
@@ -217,6 +218,7 @@ fn try_build_csv_record(
                         sent_timestamp,
                         received_timestamp,
                         received_subscr_timestamp,
+                        index_in_block,
                         tx_status: vec![],
                     });
                 }
