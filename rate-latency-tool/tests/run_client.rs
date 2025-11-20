@@ -5,6 +5,7 @@ use {
     solana_fee_calculator::FeeRateGovernor,
     solana_hash::Hash,
     solana_keypair::Keypair,
+    solana_net_utils::SocketAddrSpace,
     solana_pubsub_client::pubsub_client::PubsubClient,
     solana_rate_latency_tool::{
         accounts_file::create_ephemeral_accounts,
@@ -19,7 +20,6 @@ use {
         response::RpcBlockUpdateError,
     },
     solana_signer::Signer,
-    solana_streamer::socket::SocketAddrSpace,
     solana_test_validator::TestValidatorGenesis,
     solana_transaction::versioned::VersionedTransaction,
     spl_memo_interface::v3::id as spl_memo_id,
@@ -105,7 +105,7 @@ fn test_transactions_sending() {
                 send_interval: Duration::from_millis(100),
                 compute_unit_price: Some(100),
                 handshake_timeout: Duration::from_secs(2),
-                leader_tracker: LeaderTracker::NodeAddressService,
+                leader_tracker: LeaderTracker::WsLeaderTracker,
             },
             TxAnalysisParams {
                 output_csv_file: None,
@@ -119,7 +119,7 @@ fn test_transactions_sending() {
     });
 
     let (mut block_subscribe_client, receiver) = PubsubClient::block_subscribe(
-        &test_validator.rpc_pubsub_url(),
+        test_validator.rpc_pubsub_url(),
         RpcBlockSubscribeFilter::All,
         Some(RpcBlockSubscribeConfig {
             commitment: Some(CommitmentConfig::confirmed()),
@@ -173,7 +173,7 @@ async fn get_latest_blockhash(client: &RpcClient) -> Hash {
         match client.get_latest_blockhash().await {
             Ok(blockhash) => return blockhash,
             Err(err) => {
-                info!("Couldn't get last blockhash: {:?}", err);
+                info!("Couldn't get last blockhash: {err:?}");
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
         };

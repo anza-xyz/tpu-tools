@@ -42,8 +42,8 @@ pub struct ClientCliParameters {
     // Cannot use value_parser to read keypair file because Keypair is not Clone.
     #[clap(
         long,
-        help = "Keypair file of authority. If not provided, create a new one.\n\
-                If authority has insufficient funds, client will try airdrop."
+        help = "Keypair file of authority. If not provided, create a new one.\nIf authority has \
+                insufficient funds, client will try airdrop."
     )]
     pub authority: Option<PathBuf>,
 
@@ -120,7 +120,8 @@ pub struct ExecutionParams {
     #[clap(
         long,
         default_value_t = 1,
-        help = "To how many future leaders the transactions should be sent. The connection fanout is set send_fanout + 1."
+        help = "To how many future leaders the transactions should be sent. The connection fanout \
+                is set send_fanout + 1."
     )]
     pub send_fanout: usize,
 
@@ -143,20 +144,21 @@ pub struct ExecutionParams {
 #[clap(rename_all = "kebab-case")]
 pub enum LeaderTracker {
     #[clap(
-        help = "Use pinned address to send transactions to, which means we are not interested in leader slot updates."
+        help = "Use pinned address to send transactions to, which means we are not interested in \
+                leader slot updates."
     )]
-    Pinned { address: SocketAddr },
+    PinnedLeaderTracker { address: SocketAddr },
 
     #[clap(
         help = "Use old ws tracking code for slot updates. WS url is generated from the RPC url."
     )]
-    Legacy,
+    LegacyLeaderTracker,
 
     #[clap(help = "Use ws for slot updates. WS url is generated from the RPC url.")]
-    NodeAddressService,
+    WsLeaderTracker,
 
     #[clap(help = "Use yellowstone grpc for slot updates instead of ws.")]
-    Yellowstone {
+    YellowstoneLeaderTracker {
         /// gRPC endpoint URL (positional argument)
         url: String,
         /// gRPC token (optional)
@@ -164,7 +166,7 @@ pub enum LeaderTracker {
     },
 
     #[clap(help = "Use custom slot updater geyser plugin which sends slot updates over UDP.")]
-    SlotUpdater { bind_address: SocketAddr },
+    CustomLeaderTracker { bind_address: SocketAddr },
 }
 
 #[derive(Args, Copy, Clone, Debug, PartialEq, Eq)]
@@ -222,18 +224,14 @@ pub struct TxAnalysisParams {
     )]
     pub yellowstone_url: Option<String>,
 
-    #[clap(
-        long,
-        validator = parse_url,
-        requires = "yellowstone-url",
-        help = "Yellowstone token."
-    )]
+    #[clap(long, requires = "yellowstone-url", help = "Yellowstone token.")]
     pub yellowstone_token: Option<String>,
 
     #[clap(
         long,
         requires = "yellowstone-url",
-        help = "File to write mapping between slot and number of transactions in the corresponding block."
+        help = "File to write mapping between slot and number of transactions in the \
+                corresponding block."
     )]
     pub txs_per_block_file: Option<PathBuf>,
 }
@@ -283,7 +281,7 @@ mod tests {
             vec!["--num-payers", "256", "--payer-account-balance", "1"],
             AccountParams {
                 num_payers: 256,
-                payer_account_balance: 1 * LAMPORTS_PER_SOL,
+                payer_account_balance: LAMPORTS_PER_SOL,
             },
         )
     }
@@ -309,7 +307,7 @@ mod tests {
                 send_fanout: 3,
                 compute_unit_price: None,
                 handshake_timeout: Duration::from_secs(2),
-                leader_tracker: LeaderTracker::NodeAddressService,
+                leader_tracker: LeaderTracker::WsLeaderTracker,
             },
         )
     }
@@ -344,7 +342,7 @@ mod tests {
         args.extend(account_args.iter());
         let (analysis_args, analysis_params) = get_common_analysis_params();
         args.extend(analysis_args.iter());
-        args.push("node-address-service");
+        args.push("ws-leader-tracker");
 
         let expected_parameters = ClientCliParameters {
             json_rpc_url: "http://localhost:8899".to_string(),
@@ -376,11 +374,17 @@ mod tests {
             "--accounts-file",
             accounts_file_name,
         ];
-        let (exec_args, execution_params) = get_common_execution_params(keypair_file_name);
+        let (exec_args, mut execution_params) = get_common_execution_params(keypair_file_name);
+        execution_params.leader_tracker = LeaderTracker::YellowstoneLeaderTracker {
+            url: "http://localhost:1234".to_string(),
+            token: Some("TOKEN".to_string()),
+        };
         args.extend(exec_args.iter());
         let (analysis_args, analysis_params) = get_common_analysis_params();
         args.extend(analysis_args.iter());
-        args.push("node-address-service");
+        args.push("yellowstone-leader-tracker");
+        args.push("http://localhost:1234");
+        args.push("TOKEN");
 
         let expected_parameters = ClientCliParameters {
             json_rpc_url: "http://localhost:8899".to_string(),

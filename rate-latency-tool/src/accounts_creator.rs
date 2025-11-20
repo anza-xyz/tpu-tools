@@ -159,7 +159,7 @@ impl AccountsCreator {
 fn save_partial_results(payers: Vec<Keypair>) {
     let timestamp = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
 
-    let file_name = format!("accounts-dump-{}.json", timestamp);
+    let file_name = format!("accounts-dump-{timestamp}.json");
     let mut path = PathBuf::from("./");
     path.push(file_name);
     info!("Save partial results to file: {path:?}.");
@@ -257,15 +257,19 @@ async fn create_accounts(
         let num_created_accounts = created_accounts.len();
         if num_continuous_failed_attempts >= max_continuos_failed_attempts {
             error!(
-                "Failed to create accounts. num_send_batch_attempts: {}, num_created_accounts: {}.",
-                num_send_batch_attempts, num_created_accounts
+                "Failed to create accounts. num_send_batch_attempts: {num_send_batch_attempts}, \
+                 num_created_accounts: {num_created_accounts}.",
             );
             break;
         }
 
         let current_batch_size =
             calculate_batch_size(num_accounts, num_created_accounts, num_send_batch_attempts);
-        debug!("current_batch_size: {current_batch_size}, num_created_accounts: {num_created_accounts}, num_continuous_failed_attempts: {num_continuous_failed_attempts}.");
+        debug!(
+            "current_batch_size: {current_batch_size}, num_created_accounts: \
+             {num_created_accounts}, num_continuous_failed_attempts: \
+             {num_continuous_failed_attempts}."
+        );
 
         let blockhash = rpc_client.get_latest_blockhash().await;
         if let Err(error) = blockhash {

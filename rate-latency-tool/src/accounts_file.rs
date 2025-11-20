@@ -35,20 +35,13 @@ pub struct AccountsFile {
 
 pub fn read_accounts_file(path: PathBuf) -> AccountsFile {
     let file_content = std::fs::read_to_string(&path).unwrap_or_else(|err| {
-        panic!(
-            "Failed to read the accounts file.\n\
-             Path: {path:?}\n\
-             Error: {err}"
-        )
+        panic!("Failed to read the accounts file.\nPath: {path:?}\nError: {err}")
     });
     serde_json::from_str::<AccountsFileRaw>(&file_content)
         .unwrap_or_else(|err| {
             panic!(
-                "Failed to parse accounts file.\n\
-                 Path: {path:?}\n\
-                 Error: {err}\n\
-                 Content:\n\
-                 {file_content}"
+                "Failed to parse accounts file.\nPath: {path:?}\nError: \
+                 {err}\nContent:\n{file_content}"
             )
         })
         .into()
@@ -56,28 +49,16 @@ pub fn read_accounts_file(path: PathBuf) -> AccountsFile {
 
 pub fn write_accounts_file(path: PathBuf, accounts: AccountsFile) {
     let accounts_file_raw: AccountsFileRaw = accounts.into();
-    let file_content = serde_json::to_string(&accounts_file_raw).unwrap_or_else(|err| {
-        panic!(
-            "Failed to serialize the accounts file.\n\
-             Error: {err}"
-        )
-    });
-    let mut file = File::create(path.clone()).unwrap_or_else(|err| {
-        panic!(
-            "Failed to create a file.\n\
-             Path: {path:?}\n\
-             Error: {err}"
-        )
-    });
+    let file_content = serde_json::to_string(&accounts_file_raw)
+        .unwrap_or_else(|err| panic!("Failed to serialize the accounts file.\nError: {err}"));
+    let mut file = File::create(path.clone())
+        .unwrap_or_else(|err| panic!("Failed to create a file.\nPath: {path:?}\nError: {err}"));
 
     file.write_all(file_content.as_bytes())
         .unwrap_or_else(|err| {
             panic!(
-                "Failed to write the accounts file.\n\
-                 Path: {path:?}\n\
-                 Error: {err}\n\
-                 Content:\n\
-                 {file_content}"
+                "Failed to write the accounts file.\nPath: {path:?}\nError: \
+                 {err}\nContent:\n{file_content}"
             )
         });
 }
@@ -149,7 +130,7 @@ async fn validate_payers(
     }
     for payer in payers {
         let balance_sol: u64 = rpc_client.get_balance(&payer.pubkey()).await?;
-        if balance_sol * LAMPORTS_PER_SOL < desired_balance_lamports {
+        if balance_sol.saturating_mul(LAMPORTS_PER_SOL) < desired_balance_lamports {
             error!(
                 "Insufficient balance {}SOL for account {}.",
                 balance_sol,

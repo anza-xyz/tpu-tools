@@ -11,8 +11,9 @@ edition = { workspace = true }
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = { workspace = true }
 async-std = { workspace = true }
+async-stream = { workspace = true }
+async-trait = { workspace = true }
 bincode = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
@@ -20,7 +21,6 @@ csv-async = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true, optional = true }
 log = { workspace = true }
-node-address-service = { path = "../node-address-service" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 solana-clap-v3-utils = { workspace = true }
@@ -49,7 +49,7 @@ solana-signer = { workspace = true }
 solana-system-interface = { workspace = true }
 solana-time-utils = { workspace = true }
 solana-tpu-client = { workspace = true }
-solana-tpu-client-next = { workspace = true, features = ["metrics", "agave-unstable-api"] }
+solana-tpu-client-next = { workspace = true, features = ["metrics", "agave-unstable-api", "websocket-node-address-service"] }
 solana-transaction = { workspace = true }
 spl-memo-interface = { workspace = true }
 thiserror = { workspace = true }
@@ -61,18 +61,18 @@ yellowstone-grpc-proto = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }
-solana-core = { workspace = true, features = ["dev-context-only-utils"] }
+solana-epoch-info = { workspace = true }
 solana-faucet = { workspace = true, features = ["dev-context-only-utils"] }
 solana-fee-calculator = { workspace = true }
+solana-net-utils = { workspace = true }
 solana-pubsub-client = { workspace = true }
 solana-rent = { workspace = true }
 solana-rpc = { workspace = true }
 solana-rpc-client-api = { workspace = true }
-solana-sha256-hasher = { workspace = true }
 solana-sdk-ids = { workspace = true }
+solana-sha256-hasher = { workspace = true }
 solana-streamer = { workspace = true, features = ["dev-context-only-utils"] }
 solana-test-validator = { workspace = true }
-solana-epoch-info = { workspace = true }
 
 [features]
 default = ["leader_tracker"]

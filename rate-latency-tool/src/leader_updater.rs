@@ -1,18 +1,26 @@
 use {
     crate::{
-        error::RateLatencyToolError,
         run_rate_latency_tool_scheduler::{LeaderSlotEstimator, LeaderUpdaterWithSlot},
-        slot_updater_node_address_service::SlotUpdaterNodeAddressService,
-        yellowstone_leader_tracker::YellowstoneNodeAddressService,
+        slot_updater_node_address_service::{
+            CustomGeyserNodeAddressService, Error as CustomGeyserNodeAddressServiceError,
+        },
+        yellowstone_leader_tracker::{
+            Error as YellowstoneNodeAddressServiceError, YellowstoneNodeAddressService,
+        },
     },
     async_trait::async_trait,
     log::error,
-    node_address_service::{LeaderTpuCacheServiceConfig, NodeAddressService},
     solana_clock::{Slot, NUM_CONSECUTIVE_LEADER_SLOTS},
     solana_connection_cache::connection_cache::Protocol,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_tpu_client::nonblocking::tpu_client::LeaderTpuService,
-    solana_tpu_client_next::leader_updater::LeaderUpdater,
+    solana_tpu_client_next::{
+        leader_updater::LeaderUpdater,
+        node_address_service::LeaderTpuCacheServiceConfig,
+        websocket_node_address_service::{
+            Error as WebsocketNodeAddressServiceError, WebsocketNodeAddressService,
+        },
+    },
     std::{
         net::SocketAddr,
         sync::{
@@ -20,6 +28,7 @@ use {
             Arc,
         },
     },
+    thiserror::Error,
     tokio_util::sync::CancellationToken,
 };
 
@@ -31,11 +40,26 @@ pub enum LeaderUpdaterType {
     SlotUpdaterTracker((SocketAddr, LeaderTpuCacheServiceConfig)),
 }
 
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    WebsocketNodeAddressServiceError(#[from] WebsocketNodeAddressServiceError),
+
+    #[error(transparent)]
+    NodeAddressServiceError(#[from] YellowstoneNodeAddressServiceError),
+
+    #[error(transparent)]
+    CustomGeyserNodeAddressServiceError(#[from] CustomGeyserNodeAddressServiceError),
+
+    #[error("Legacy leader updater failed to start")]
+    LegacyLeaderUpdaterInitializationFailed,
+}
+
 pub async fn create_leader_updater(
     rpc_client: Arc<RpcClient>,
     updater_type: LeaderUpdaterType,
     cancel: CancellationToken,
-) -> Result<Box<dyn LeaderUpdaterWithSlot>, RateLatencyToolError> {
+) -> Result<Box<dyn LeaderUpdaterWithSlot>, Error> {
     match updater_type {
         LeaderUpdaterType::Pinned(pinned_address) => Ok(Box::new(PinnedLeaderUpdater {
             address: vec![pinned_address],
@@ -47,7 +71,7 @@ pub async fn create_leader_updater(
                     .await
                     .map_err(|error| {
                         error!("Failed to create a LeaderTpuService: {error}");
-                        RateLatencyToolError::LeaderUpdaterError
+                        Error::LegacyLeaderUpdaterInitializationFailed
                     })?;
             Ok(Box::new(LeaderUpdaterService {
                 leader_tpu_service,
@@ -56,7 +80,7 @@ pub async fn create_leader_updater(
         }
         LeaderUpdaterType::LeaderTracker((websocket_url, config)) => {
             let leader_tpu_service =
-                NodeAddressService::run(rpc_client, &websocket_url, config, cancel).await?;
+                WebsocketNodeAddressService::run(rpc_client, websocket_url, config, cancel).await?;
             Ok(Box::new(leader_tpu_service))
         }
         LeaderUpdaterType::YellowstoneLeaderTracker((
@@ -75,7 +99,7 @@ pub async fn create_leader_updater(
             Ok(Box::new(leader_tpu_service))
         }
         LeaderUpdaterType::SlotUpdaterTracker((bind, leader_tpu_cache_service_config)) => {
-            let leader_tpu_service = SlotUpdaterNodeAddressService::run(
+            let leader_tpu_service = CustomGeyserNodeAddressService::run(
                 rpc_client,
                 bind,
                 leader_tpu_cache_service_config,
@@ -117,9 +141,9 @@ impl LeaderSlotEstimator for LeaderUpdaterService {
 }
 
 #[async_trait]
-impl LeaderSlotEstimator for NodeAddressService {
+impl LeaderSlotEstimator for WebsocketNodeAddressService {
     fn get_current_slot(&mut self) -> Slot {
-        self.estimated_current_slot()
+        self.current_slot()
     }
 }
 

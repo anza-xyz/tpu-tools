@@ -11,7 +11,6 @@ use {
         yellowstone_subscriber::run_yellowstone_subscriber,
     },
     log::*,
-    node_address_service::LeaderTpuCacheServiceConfig,
     solana_clock::Slot,
     solana_compute_budget_interface::ComputeBudgetInstruction,
     solana_hash::Hash,
@@ -24,6 +23,7 @@ use {
         connection_workers_scheduler::{
             BindTarget, ConnectionWorkersSchedulerConfig, Fanout, StakeIdentity,
         },
+        node_address_service::LeaderTpuCacheServiceConfig,
         SendTransactionStats,
     },
     solana_transaction::Transaction,
@@ -180,23 +180,23 @@ pub async fn run_client(
         max_consecutive_failures: 5,
     };
     let updater_type = match leader_tracker {
-        LeaderTracker::Pinned { address } => {
+        LeaderTracker::PinnedLeaderTracker { address } => {
             debug!("Using pinned leader updater");
             LeaderUpdaterType::Pinned(address)
         }
-        LeaderTracker::Legacy => {
+        LeaderTracker::LegacyLeaderTracker => {
             debug!("Using legacy leader updater");
             LeaderUpdaterType::Legacy(websocket_url)
         }
-        LeaderTracker::Yellowstone { url, token } => {
+        LeaderTracker::YellowstoneLeaderTracker { url, token } => {
             debug!("Using yellowstone leader tracker updater");
             LeaderUpdaterType::YellowstoneLeaderTracker((url, token, config))
         }
-        LeaderTracker::SlotUpdater { bind_address } => {
+        LeaderTracker::CustomLeaderTracker { bind_address } => {
             debug!("Using slot updater leader tracker updater");
             LeaderUpdaterType::SlotUpdaterTracker((bind_address, config))
         }
-        LeaderTracker::NodeAddressService => {
+        LeaderTracker::WsLeaderTracker => {
             debug!("Using node address service leader tracker updater");
             LeaderUpdaterType::LeaderTracker((websocket_url, config))
         }
@@ -297,12 +297,12 @@ pub async fn run_client(
         match res {
             Ok(Ok(_)) => info!("Task completed successfully"),
             Ok(Err(e)) => {
-                error!("Task failed with error: {:?}, stoppting the tool...", e);
+                error!("Task failed with error: {e:?}, stoppting the tool...");
                 result = Err(e);
                 cancel.cancel();
             }
             Err(e) => {
-                error!("Task panicked: {:?}, stoppting the tool...", e);
+                error!("Task panicked: {e:?}, stoppting the tool...");
                 result = Err(RateLatencyToolError::UnexpectedError);
                 cancel.cancel();
             }
@@ -327,6 +327,8 @@ fn create_memo_transaction(
             compute_unit_price,
         ));
     }
+    // 100*1024 because MEMO is ~75KB.
+    instructions.push(ComputeBudgetInstruction::set_loaded_accounts_data_size_limit(100 * 1024));
     instructions.push(spl_memo_interface::instruction::build_memo(
         &spl_memo_interface::v3::id(),
         memo.as_bytes(),

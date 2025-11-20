@@ -1,39 +1,40 @@
 use {
     crate::{
         run_rate_latency_tool_scheduler::LeaderSlotEstimator,
-        yellowstone_subscriber::{create_client_config, create_geyser_client},
+        yellowstone_subscriber::{create_client_config, create_geyser_client, YellowstoneError},
     },
+    futures::Stream,
     futures_util::stream::StreamExt,
     log::*,
-    node_address_service::{
-        leader_tpu_cache_service::LeaderUpdateReceiver,
-        websocket_slot_update_service::{RecentLeaderSlots, SlotEstimator},
-        LeaderTpuCacheService, LeaderTpuCacheServiceConfig, NodeAddressServiceError, SlotReceiver,
-    },
-    solana_clock::{Slot, DEFAULT_MS_PER_SLOT},
-    solana_commitment_config::CommitmentConfig,
+    solana_clock::Slot,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
-    solana_time_utils::timestamp,
-    solana_tpu_client_next::leader_updater::LeaderUpdater,
-    std::{collections::HashMap, net::SocketAddr, sync::Arc},
-    tokio::{
-        sync::watch,
-        task::JoinHandle,
-        time::{interval, Duration, Instant},
+    solana_tpu_client_next::{
+        leader_updater::LeaderUpdater,
+        node_address_service::{
+            LeaderTpuCacheServiceConfig, NodeAddressService, NodeAddressServiceError, SlotEvent,
+        },
     },
+    std::{collections::HashMap, net::SocketAddr, sync::Arc},
+    thiserror::Error,
     tokio_util::sync::CancellationToken,
-    tonic::async_trait,
+    tonic::{async_trait, Status},
     yellowstone_grpc_proto::geyser::{
         subscribe_update::UpdateOneof, CommitmentLevel, SlotStatus, SubscribeRequest,
-        SubscribeRequestFilterSlots, SubscribeUpdateSlot,
+        SubscribeRequestFilterSlots, SubscribeUpdate, SubscribeUpdateSlot,
     },
 };
 
 pub struct YellowstoneNodeAddressService {
-    leaders_receiver: LeaderUpdateReceiver,
-    slot_receiver: SlotReceiver,
-    slot_update_service: YellowstoneSlotUpdateService,
-    leader_cache_service: LeaderTpuCacheService,
+    service: NodeAddressService,
+}
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    YellowstoneError(#[from] YellowstoneError),
+
+    #[error(transparent)]
+    NodeAddressServiceError(#[from] NodeAddressServiceError),
 }
 
 impl YellowstoneNodeAddressService {
@@ -43,190 +44,118 @@ impl YellowstoneNodeAddressService {
         yellowstone_token: Option<&str>,
         config: LeaderTpuCacheServiceConfig,
         cancel: CancellationToken,
-    ) -> Result<Self, NodeAddressServiceError> {
-        let start_slot = rpc_client
-            .get_slot_with_commitment(CommitmentConfig::processed())
-            .await?;
+    ) -> Result<Self, Error> {
+        let stream = init_stream(yellowstone_url.clone(), yellowstone_token).await?;
+        let filtered_stream =
+            stream.filter_map(|update| async { map_yellowstone_update_to_slot_event(update) });
 
-        let (slot_receiver, slot_update_service) = YellowstoneSlotUpdateService::run(
-            start_slot,
-            yellowstone_url,
-            yellowstone_token,
-            cancel.clone(),
-        )
-        .await?;
-        let (leaders_receiver, leader_cache_service) =
-            LeaderTpuCacheService::run(rpc_client, slot_receiver.clone(), config, cancel).await?;
+        let service = NodeAddressService::run(rpc_client, filtered_stream, config, cancel).await?;
 
-        Ok(Self {
-            leaders_receiver,
-            slot_receiver,
-            slot_update_service,
-            leader_cache_service,
-        })
+        Ok(Self { service })
     }
 
-    pub async fn shutdown(self) -> Result<(), NodeAddressServiceError> {
-        self.slot_update_service.shutdown().await?;
-        self.leader_cache_service.shutdown().await?;
+    pub async fn shutdown(&mut self) -> Result<(), Error> {
+        self.service.shutdown().await?;
         Ok(())
+    }
+}
+
+async fn init_stream(
+    yellowstone_url: String,
+    yellowstone_token: Option<&str>,
+) -> Result<impl Stream<Item = Result<SubscribeUpdate, Status>> + Send + 'static, Error> {
+    assert!(
+        !yellowstone_url.is_empty(),
+        "Yellowstone URL must not be empty"
+    );
+    let client_config = create_client_config(&yellowstone_url, yellowstone_token);
+    let mut client = create_geyser_client(client_config).await.map_err(|e| {
+        error!("Failed to create Yellowstone client: {e:?}");
+        e
+    })?;
+
+    let request = build_request();
+
+    let (_subscribe_tx, stream) =
+        client
+            .subscribe_with_request(Some(request))
+            .await
+            .map_err(|e| {
+                error!("Failed to subscribe to Yellowstone: {e:?}");
+                YellowstoneError::GeyserGrpcClientError(e)
+            })?;
+    Ok(stream)
+}
+
+fn map_yellowstone_update_to_slot_event(
+    update: Result<SubscribeUpdate, Status>,
+) -> Option<SlotEvent> {
+    if update.is_err() {
+        error!("Error received from Yellowstone: {:?}", update.err());
+        return None;
+    }
+    match update
+        .unwrap()
+        .update_oneof
+        .expect("Should be valid message")
+    {
+        UpdateOneof::Slot(SubscribeUpdateSlot { slot, status, .. }) => {
+            match SlotStatus::try_from(status).expect("Should be valid status code") {
+                // This update indicates that we have just received the first shred from
+                // the leader for this slot and they are probably still accepting transactions.
+                SlotStatus::SlotFirstShredReceived => Some(SlotEvent::Start(slot)),
+                //TODO(klykov): fall back on bank created to use with solana test validator
+                // This update indicates that a full slot was received by the connected
+                // node so we can stop sending transactions to the leader for that slot
+                SlotStatus::SlotCompleted => Some(SlotEvent::End(slot)),
+                _ => None,
+            }
+        }
+        _ => {
+            error!("Unexpected update type received from Yellowstone");
+            None
+        }
+    }
+}
+
+fn build_request() -> SubscribeRequest {
+    let slots = HashMap::from([(
+        "client".to_string(),
+        SubscribeRequestFilterSlots {
+            interslot_updates: Some(true),
+            ..Default::default()
+        },
+    )]);
+
+    SubscribeRequest {
+        accounts: HashMap::new(),
+        slots,
+        transactions: HashMap::new(),
+        transactions_status: HashMap::new(),
+        blocks: HashMap::new(),
+        blocks_meta: HashMap::new(),
+        entry: HashMap::new(),
+        commitment: Some(CommitmentLevel::Processed as i32),
+        accounts_data_slice: vec![],
+        ping: None,
+        from_slot: None,
     }
 }
 
 #[async_trait]
 impl LeaderUpdater for YellowstoneNodeAddressService {
-    //TODO(klykov): we need to consier removing next leaders with lookahead_leaders in the future
-    fn next_leaders(&mut self, _lookahead_leaders: usize) -> Vec<SocketAddr> {
-        self.leaders_receiver.leaders()
+    fn next_leaders(&mut self, lookahead_leaders: usize) -> Vec<SocketAddr> {
+        self.service.next_leaders(lookahead_leaders)
     }
 
-    //TODO(klykov): stop should return error to handle join and also stop should
-    //consume the object. We cannot properly implement it because it will break
-    //API.
-    async fn stop(&mut self) {}
+    async fn stop(&mut self) {
+        let _ = self.shutdown().await;
+    }
 }
 
 #[async_trait]
 impl LeaderSlotEstimator for YellowstoneNodeAddressService {
     fn get_current_slot(&mut self) -> Slot {
-        self.slot_receiver.slot_with_timestamp().0
-    }
-}
-
-pub struct YellowstoneSlotUpdateService {
-    handle: JoinHandle<Result<(), NodeAddressServiceError>>,
-    cancel: CancellationToken,
-}
-
-impl YellowstoneSlotUpdateService {
-    pub async fn run(
-        current_slot: Slot,
-        yellowstone_url: String,
-        yellowstone_token: Option<&str>,
-        cancel: CancellationToken,
-    ) -> Result<(SlotReceiver, Self), NodeAddressServiceError> {
-        assert!(
-            !yellowstone_url.is_empty(),
-            "Yellowstone URL must not be empty"
-        );
-        let client_config = create_client_config(&yellowstone_url, yellowstone_token);
-        let mut client = create_geyser_client(client_config).await.map_err(|e| {
-            error!("Failed to create Yellowstone client: {e:?}");
-            NodeAddressServiceError::InitializationFailed
-        })?;
-
-        let request = Self::build_request();
-
-        let mut recent_slots = RecentLeaderSlots::new();
-        let (slot_sender, slot_receiver) = watch::channel((current_slot, timestamp()));
-        let slot_receiver_clone = slot_receiver.clone();
-        let cancel_clone = cancel.clone();
-
-        // Track the last time a slot update was received. In case of current leader is not sending relevant shreds for some reason, the current slot will not update.
-        let mut last_slot_time = Instant::now();
-        const FALLBACK_SLOT_TIMEOUT: Duration = Duration::from_millis(DEFAULT_MS_PER_SLOT);
-
-        let mut interval = interval(FALLBACK_SLOT_TIMEOUT);
-        let (_subscribe_tx, mut stream) = client
-            .subscribe_with_request(Some(request))
-            .await
-            .map_err(|e| {
-                error!("Failed to subscribe to Yellowstone: {e:?}");
-                NodeAddressServiceError::InitializationFailed
-            })?;
-
-        let main_loop = async move {
-            loop {
-                tokio::select! {
-                // biased to always prefer slot update over fallback slot injection
-                biased;
-                maybe_update = stream.next() => {
-                    if let Some(Ok(update)) = maybe_update {
-                        match update.update_oneof.expect("Should be valid message") {
-                            UpdateOneof::Slot(SubscribeUpdateSlot { slot, status, .. }) => {
-                                let current_slot = match SlotStatus::try_from(status).expect("Should be valid status code") {
-                                    // This update indicates that we have just received the first shred from
-                                    // the leader for this slot and they are probably still accepting transactions.
-                                    SlotStatus::SlotFirstShredReceived => slot,
-                                    //TODO(klykov): fall back on bank created to use with solana test validator
-                                    // This update indicates that a full slot was received by the connected
-                                    // node so we can stop sending transactions to the leader for that slot
-                                    //SlotStatus::SlotCompleted  => slot.saturating_add(1),
-                                    SlotStatus::SlotCreatedBank => slot,
-                                    _ => continue,
-                                };
-                                recent_slots.record_slot(current_slot);
-                                last_slot_time = Instant::now();
-                                let cached_estimated_slot = slot_receiver.borrow().0;
-                                let estimated_slot = recent_slots.estimate_current_slot();
-                                info!("slot received: {slot}, status: {status}, estimated_slot: {estimated_slot}");
-                                if cached_estimated_slot < estimated_slot {
-                                    slot_sender.send((estimated_slot, timestamp() ))
-                                        .expect("Failed to send slot update");
-                                }
-                            }
-                            _ => {
-                                error!("Unexpected update type received from Yellowstone");
-                            }
-                        }
-                    }
-                }
-
-                _ = interval.tick(), if last_slot_time.elapsed() > FALLBACK_SLOT_TIMEOUT => {
-                    let estimated = recent_slots.estimate_current_slot().saturating_add(1);
-                    info!("Injecting fallback slot {estimated}");
-                    recent_slots.record_slot(estimated);
-                    recent_slots.record_slot(estimated);
-                    last_slot_time = Instant::now();
-                }
-
-                _ = cancel.cancelled() => {
-                    info!("LeaderTracker cancelled, exiting slot watcher.");
-                    break;
-                }
-                }
-            }
-            Ok(())
-        };
-
-        let handle = tokio::spawn(main_loop);
-
-        Ok((
-            SlotReceiver::new(slot_receiver_clone),
-            Self {
-                handle,
-                cancel: cancel_clone,
-            },
-        ))
-    }
-
-    fn build_request() -> SubscribeRequest {
-        let slots = HashMap::from([(
-            "client".to_string(),
-            SubscribeRequestFilterSlots {
-                interslot_updates: Some(true),
-                ..Default::default()
-            },
-        )]);
-
-        SubscribeRequest {
-            accounts: HashMap::new(),
-            slots,
-            transactions: HashMap::new(),
-            transactions_status: HashMap::new(),
-            blocks: HashMap::new(),
-            blocks_meta: HashMap::new(),
-            entry: HashMap::new(),
-            commitment: Some(CommitmentLevel::Processed as i32),
-            accounts_data_slice: vec![],
-            ping: None,
-            from_slot: None,
-        }
-    }
-
-    pub async fn shutdown(self) -> Result<(), NodeAddressServiceError> {
-        self.cancel.cancel();
-        self.handle.await??;
-        Ok(())
+        self.service.estimated_current_slot()
     }
 }

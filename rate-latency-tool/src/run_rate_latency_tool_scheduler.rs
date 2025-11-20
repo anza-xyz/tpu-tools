@@ -4,9 +4,7 @@ use {
     solana_clock::Slot,
     solana_measure::measure::Measure,
     solana_tpu_client_next::{
-        connection_workers_scheduler::{
-            extract_send_leaders, setup_endpoint, ConnectionWorkersSchedulerConfig,
-        },
+        connection_workers_scheduler::{setup_endpoint, ConnectionWorkersSchedulerConfig},
         leader_updater::LeaderUpdater,
         transaction_batch::TransactionBatch,
         workers_cache::{shutdown_worker, spawn_worker, WorkersCache, WorkersCacheError},
@@ -60,16 +58,21 @@ where
         loop {
             ticker.tick().await;
             let current_slot = leader_updater.get_current_slot();
+
             let connect_leaders = leader_updater.next_leaders(leaders_fanout.connect);
-            let send_leaders = extract_send_leaders(&connect_leaders, leaders_fanout.send);
-            debug!("Connect leaders: {connect_leaders:?}, send leaders: {send_leaders:?} for slot {current_slot}, leader_fanout: {leaders_fanout:?}.");
+            let send_leaders = leader_updater.next_leaders(leaders_fanout.send);
+            //extract_send_leaders(&connect_leaders, leaders_fanout.send);
+            debug!(
+                "Connect leaders: {connect_leaders:?}, send leaders: {send_leaders:?} for slot \
+                 {current_slot}, leader_fanout: {leaders_fanout:?}."
+            );
 
             // add future leaders to the cache to hide the latency of opening
             // the connection.
             for peer in connect_leaders {
-                debug!("Checking connection to the peer: {}", peer);
+                debug!("Checking connection to the peer: {peer}");
                 if !workers.contains(&peer) {
-                    debug!("Creating connection to the peer: {}", peer);
+                    debug!("Creating connection to the peer: {peer}");
                     let worker = spawn_worker(
                         &endpoint,
                         &peer,
@@ -83,7 +86,7 @@ where
                         shutdown_worker(pop_worker)
                     }
                 } else {
-                    debug!("Connection to the peer {} exists.", peer);
+                    debug!("Connection to the peer {peer} exists.");
                 }
             }
 
@@ -95,7 +98,10 @@ where
             let transaction_batch = TransactionBatch::new(vec![memo_tx]);
             for new_leader in &send_leaders {
                 if !workers.contains(new_leader) {
-                    warn!("No existing worker for {new_leader:?} (slot {current_slot}, skip sending to this leader.");
+                    warn!(
+                        "No existing worker for {new_leader:?} (slot {current_slot}, skip sending \
+                         to this leader."
+                    );
                     continue;
                 }
 
@@ -103,15 +109,24 @@ where
                     workers.try_send_transactions_to_address(new_leader, transaction_batch.clone());
                 let status = match send_res {
                     Ok(()) => {
-                        debug!("Succefully sent transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
+                        debug!(
+                            "Succefully sent transaction with id: {transaction_id}, current slot: \
+                             {current_slot}, leader: {new_leader}."
+                        );
                         TransactionSendStatus::Sent
                     }
                     Err(WorkersCacheError::ShutdownError) => {
-                        debug!("Failed with ShutdownError sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
+                        debug!(
+                            "Failed with ShutdownError sending transaction with id: \
+                             {transaction_id}, current slot: {current_slot}, leader: {new_leader}."
+                        );
                         TransactionSendStatus::Other
                     }
                     Err(WorkersCacheError::ReceiverDropped) => {
-                        debug!("Failed with ReceiverDropped sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
+                        debug!(
+                            "Failed with ReceiverDropped sending transaction with id: \
+                             {transaction_id}, current slot: {current_slot}, leader: {new_leader}."
+                        );
                         // Remove the worker from the cache, if the peer has disconnected.
                         if let Some(pop_worker) = workers.pop(*new_leader) {
                             shutdown_worker(pop_worker)
@@ -119,11 +134,17 @@ where
                         TransactionSendStatus::ReceiverDropped
                     }
                     Err(WorkersCacheError::FullChannel) => {
-                        debug!("Failed with FullChannel sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
+                        debug!(
+                            "Failed with FullChannel sending transaction with id: \
+                             {transaction_id}, current slot: {current_slot}, leader: {new_leader}."
+                        );
                         TransactionSendStatus::FullChannel
                     }
                     Err(err) => {
-                        debug!("Failed with {err} sending transaction with id: {transaction_id}, current slot: {current_slot}, leader: {new_leader}.");
+                        debug!(
+                            "Failed with {err} sending transaction with id: {transaction_id}, \
+                             current slot: {current_slot}, leader: {new_leader}."
+                        );
                         TransactionSendStatus::Other
                     }
                 };

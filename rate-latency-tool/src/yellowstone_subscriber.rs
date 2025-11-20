@@ -167,7 +167,10 @@ pub async fn run_yellowstone_subscriber(
                                 received_subscr_timestamp,
                             ) {
                                 if csv_sender.send(record).await.is_err() {
-                                    info!("Unexpectidly dropped CSVRecord receiver, stopping yellowstone subscriber.");
+                                    info!(
+                                        "Unexpectidly dropped CSVRecord receiver, stopping \
+                                         yellowstone subscriber."
+                                    );
                                     break;
                                 }
                             } else {
@@ -181,8 +184,9 @@ pub async fn run_yellowstone_subscriber(
                                     .await
                                     .map_err(|e| {
                                         error!(
-                                        "Failed to send number of transactions per block: {e:?}"
-                                    );
+                                            "Failed to send number of transactions per block: \
+                                             {e:?}"
+                                        );
                                         YellowstoneError::UnexpectedError
                                     })?;
                             }
@@ -251,7 +255,7 @@ fn try_build_csv_record(
 
 /// Extracts log line which starts with `Program log: Memo` from given log
 /// lines.
-fn extract_memo_line<'a, T: AsRef<str>>(logs: &'a [T]) -> Option<&'a str> {
+fn extract_memo_line<T: AsRef<str>>(logs: &[T]) -> Option<&str> {
     logs.iter()
         .map(AsRef::as_ref)
         .find(|line| line.starts_with("Program log: Memo"))

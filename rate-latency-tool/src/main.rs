@@ -3,10 +3,10 @@ use {
     log::*,
     solana_cli_config::ConfigInput,
     solana_keypair::Keypair,
-    solana_rate_latency_tool::accounts_file::{
-        create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
-    },
     solana_rate_latency_tool::{
+        accounts_file::{
+            create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
+        },
         cli::{build_cli_parameters, ClientCliParameters, Command},
         error::RateLatencyToolError,
         run_client::run_client,
