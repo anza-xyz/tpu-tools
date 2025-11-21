@@ -1,5 +1,5 @@
 use {
-    clap::{crate_description, crate_name, crate_version, Args, Parser, Subcommand},
+    clap::{crate_description, crate_name, crate_version, value_parser, Args, Parser, Subcommand},
     solana_clap_v3_utils::{
         input_parsers::{parse_url, parse_url_or_moniker},
         input_validators::normalize_to_url_if_moniker,
@@ -10,8 +10,11 @@ use {
     tokio::time::Duration,
 };
 
-fn normalize_to_url(addr: &str) -> Result<String, &'static str> {
-    Ok(normalize_to_url_if_moniker(addr))
+fn parse_and_normalize_url(addr: &str) -> Result<String, String> {
+    match parse_url_or_moniker(addr) {
+        Ok(parsed) => Ok(normalize_to_url_if_moniker(&parsed)),
+        Err(e) => Err(format!("Invalid URL or moniker: {e}")),
+    }
 }
 
 #[derive(Parser, Debug, PartialEq, Eq)]
@@ -24,8 +27,7 @@ pub struct ClientCliParameters {
     #[clap(
         long = "url",
         short = 'u',
-        validator = parse_url_or_moniker,
-        parse(try_from_str = normalize_to_url),
+        value_parser = parse_and_normalize_url,
         help = "URL for Solana's JSON RPC or moniker (or their first letter):\n\
         [mainnet-beta, testnet, devnet, localhost]"
     )]
@@ -34,7 +36,7 @@ pub struct ClientCliParameters {
     #[clap(
         long,
         default_value = "confirmed",
-        possible_values = &["processed", "confirmed", "finalized"],
+        value_parser = value_parser!(CommitmentConfig),
         help = "Block commitment config for getting latest blockhash.\n"
     )]
     pub commitment_config: CommitmentConfig,
@@ -98,14 +100,14 @@ pub struct ExecutionParams {
 
     #[clap(
         long,
-        parse(try_from_str = parse_duration_sec),
+        value_parser = parse_duration_sec,
         help = "If specified, limits the benchmark execution to the specified duration in seconds."
     )]
     pub duration: Option<Duration>,
 
     #[clap(
         long,
-        parse(try_from_str = parse_duration_ms),
+        value_parser = parse_duration_ms,
         help = "Interval between sent transactions in milliseconds."
     )]
     pub send_interval: Duration,
@@ -130,7 +132,7 @@ pub struct ExecutionParams {
 
     #[clap(
         long,
-        parse(try_from_str = parse_duration_sec),
+        value_parser = parse_duration_sec,
         default_value = "2",
         help = "Handshake timeout."
     )]
@@ -144,20 +146,20 @@ pub struct ExecutionParams {
 #[clap(rename_all = "kebab-case")]
 pub enum LeaderTracker {
     #[clap(
-        help = "Use pinned address to send transactions to, which means we are not interested in \
+        about = "Use pinned address to send transactions to, which means we are not interested in \
                 leader slot updates."
     )]
     PinnedLeaderTracker { address: SocketAddr },
 
     #[clap(
-        help = "Use old ws tracking code for slot updates. WS url is generated from the RPC url."
+        about = "Use old ws tracking code for slot updates. WS url is generated from the RPC url."
     )]
     LegacyLeaderTracker,
 
-    #[clap(help = "Use ws for slot updates. WS url is generated from the RPC url.")]
+    #[clap(about = "Use ws for slot updates. WS url is generated from the RPC url.")]
     WsLeaderTracker,
 
-    #[clap(help = "Use yellowstone grpc for slot updates instead of ws.")]
+    #[clap(about = "Use yellowstone grpc for slot updates instead of ws.")]
     YellowstoneLeaderTracker {
         /// gRPC endpoint URL (positional argument)
         url: String,
@@ -165,7 +167,7 @@ pub enum LeaderTracker {
         token: Option<String>,
     },
 
-    #[clap(help = "Use custom slot updater geyser plugin which sends slot updates over UDP.")]
+    #[clap(about = "Use custom slot updater geyser plugin which sends slot updates over UDP.")]
     CustomLeaderTracker { bind_address: SocketAddr },
 }
 
@@ -182,7 +184,7 @@ pub struct AccountParams {
     #[clap(
         long,
         default_value = "1SOL",
-        parse(try_from_str = parse_balance),
+        value_parser = parse_balance,
         help = "Payer account balance in SOL or LAMPORTS,\n\
                 used to fund creation of other accounts and for transactions.\n"
     )]
@@ -218,7 +220,7 @@ pub struct TxAnalysisParams {
 
     #[clap(
         long,
-        validator = parse_url,
+        value_parser = parse_url,
         requires = "output-csv-file",
         help = "Yellowstone url."
     )]
