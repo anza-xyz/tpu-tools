@@ -11121,6 +11121,7 @@ dependencies = [
 name = "tools-common"
 version = "1.0.0"
 dependencies = [
+ "async-stream",
  "async-trait",
  "chrono",
  "clap 4.5.53",
@@ -11132,6 +11133,7 @@ dependencies = [
  "solana-clap-v3-utils",
  "solana-clock",
  "solana-commitment-config",
+ "solana-connection-cache",
  "solana-hash",
  "solana-instruction",
  "solana-keypair",
@@ -11144,9 +11146,14 @@ dependencies = [
  "solana-sha256-hasher",
  "solana-signer",
  "solana-system-interface",
+ "solana-tpu-client",
+ "solana-tpu-client-next",
  "solana-transaction",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-util 0.7.17",
+ "tonic 0.14.2",
+ "tpu-client-next-extensions",
 ]
 
 [[package]]

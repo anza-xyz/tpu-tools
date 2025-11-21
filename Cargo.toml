@@ -1,5 +1,5 @@
 [workspace]
-members = ["rate-latency-tool", "tools-common", "tpu-client-next-extensions"]
+members = ["rate-latency-tool", "tools-common", "tpu-client-next-extensions", "transaction-bench"]
 
 resolver = "2"
 

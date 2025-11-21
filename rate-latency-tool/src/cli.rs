@@ -1,4 +1,4 @@
-pub use tools_common::cli::LeaderTracker;
+pub use tools_common::cli::{AccountParams, LeaderTracker};
 use {
     clap::{crate_description, crate_name, crate_version, value_parser, Args, Parser, Subcommand},
     solana_clap_v3_utils::input_parsers::parse_url,
@@ -6,8 +6,7 @@ use {
     std::{net::SocketAddr, path::PathBuf},
     tokio::time::Duration,
     tools_common::cli::{
-        parse_and_normalize_url, parse_duration_ms, parse_duration_sec, AccountParams,
-        ReadAccounts, WriteAccounts,
+        parse_and_normalize_url, parse_duration_ms, parse_duration_sec, ReadAccounts, WriteAccounts,
     },
 };
 
@@ -141,7 +140,7 @@ pub struct ExecutionParams {
 pub struct TxAnalysisParams {
     #[clap(
         long,
-        requires = "yellowstone-url",
+        requires = "yellowstone_url",
         help = "File to write received transaction data."
     )]
     pub output_csv_file: Option<PathBuf>,
@@ -149,17 +148,17 @@ pub struct TxAnalysisParams {
     #[clap(
         long,
         value_parser = parse_url,
-        requires = "output-csv-file",
+        requires = "output_csv_file",
         help = "Yellowstone url."
     )]
     pub yellowstone_url: Option<String>,
 
-    #[clap(long, requires = "yellowstone-url", help = "Yellowstone token.")]
+    #[clap(long, requires = "yellowstone_url", help = "Yellowstone token.")]
     pub yellowstone_token: Option<String>,
 
     #[clap(
         long,
-        requires = "yellowstone-url",
+        requires = "yellowstone_url",
         help = "File to write mapping between slot and number of transactions in the \
                 corresponding block."
     )]
@@ -175,6 +174,7 @@ mod tests {
     use {
         super::*,
         clap::Parser,
+        solana_native_token::LAMPORTS_PER_SOL,
         std::net::{IpAddr, Ipv4Addr},
     };
 

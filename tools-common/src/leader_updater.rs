@@ -1,12 +1,12 @@
 use {
     crate::{
+        cli::LeaderTracker,
         custom_geyser_node_address_service::{
             CustomGeyserNodeAddressService, Error as CustomGeyserNodeAddressServiceError,
         },
-        run_rate_latency_tool_scheduler::{LeaderSlotEstimator, LeaderUpdaterWithSlot},
     },
     async_trait::async_trait,
-    log::error,
+    log::{debug, error},
     solana_clock::{Slot, NUM_CONSECUTIVE_LEADER_SLOTS},
     solana_connection_cache::connection_cache::Protocol,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
@@ -31,6 +31,13 @@ use {
         Error as YellowstoneNodeAddressServiceError, YellowstoneNodeAddressService,
     },
 };
+
+pub trait LeaderSlotEstimator {
+    fn get_current_slot(&mut self) -> Slot;
+}
+
+pub trait LeaderUpdaterWithSlot: LeaderUpdater + LeaderSlotEstimator {}
+impl<T> LeaderUpdaterWithSlot for T where T: LeaderUpdater + LeaderSlotEstimator {}
 
 pub enum LeaderUpdaterType {
     Pinned(SocketAddr),
@@ -57,14 +64,21 @@ pub enum Error {
 
 pub async fn create_leader_updater(
     rpc_client: Arc<RpcClient>,
-    updater_type: LeaderUpdaterType,
+    leader_tracker: LeaderTracker,
+    config: LeaderTpuCacheServiceConfig,
+    websocket_url: String,
     cancel: CancellationToken,
 ) -> Result<Box<dyn LeaderUpdaterWithSlot>, Error> {
-    match updater_type {
-        LeaderUpdaterType::Pinned(pinned_address) => Ok(Box::new(PinnedLeaderUpdater {
-            address: vec![pinned_address],
-        })),
-        LeaderUpdaterType::Legacy(websocket_url) => {
+    match leader_tracker {
+        LeaderTracker::PinnedLeaderTracker { address } => {
+            debug!("Using pinned leader updater");
+            Ok(Box::new(PinnedLeaderUpdater {
+                address: vec![address],
+            }))
+        }
+        LeaderTracker::LegacyLeaderTracker => {
+            debug!("Using legacy leader updater");
+
             let exit = Arc::new(AtomicBool::new(false));
             let leader_tpu_service =
                 LeaderTpuService::new(rpc_client, &websocket_url, Protocol::QUIC, exit.clone())
@@ -78,34 +92,29 @@ pub async fn create_leader_updater(
                 exit,
             }))
         }
-        LeaderUpdaterType::LeaderTracker((websocket_url, config)) => {
+        LeaderTracker::WsLeaderTracker => {
+            debug!("Using node address service leader tracker updater");
             let leader_tpu_service =
                 WebsocketNodeAddressService::run(rpc_client, websocket_url, config, cancel).await?;
             Ok(Box::new(leader_tpu_service))
         }
-        LeaderUpdaterType::YellowstoneLeaderTracker((
-            yellowstone_url,
-            yellowstone_token,
-            config,
-        )) => {
+        LeaderTracker::YellowstoneLeaderTracker { url, token } => {
+            debug!("Using yellowstone leader tracker updater");
             let leader_tpu_service = YellowstoneNodeAddressService::run(
                 rpc_client,
-                yellowstone_url,
-                yellowstone_token.as_deref(),
+                url,
+                token.as_deref(),
                 config,
                 cancel,
             )
             .await?;
             Ok(Box::new(leader_tpu_service))
         }
-        LeaderUpdaterType::SlotUpdaterTracker((bind, leader_tpu_cache_service_config)) => {
-            let leader_tpu_service = CustomGeyserNodeAddressService::run(
-                rpc_client,
-                bind,
-                leader_tpu_cache_service_config,
-                cancel,
-            )
-            .await?;
+        LeaderTracker::CustomLeaderTracker { bind_address } => {
+            debug!("Using custom geyser node address service leader tracker updater");
+            let leader_tpu_service =
+                CustomGeyserNodeAddressService::run(rpc_client, bind_address, config, cancel)
+                    .await?;
             Ok(Box::new(leader_tpu_service))
         }
     }

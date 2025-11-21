@@ -1,14 +1,11 @@
 //! Meta error which wraps all the submodule errors.
 use {
-    crate::{
-        csv_writer::CSVWriterError, leader_updater::Error as LeaderUpdaterError,
-        yellowstone_subscriber::YellowstoneError,
-    },
+    crate::{csv_writer::CSVWriterError, yellowstone_subscriber::YellowstoneError},
     solana_tpu_client_next::ConnectionWorkersSchedulerError,
     thiserror::Error,
     tools_common::{
         accounts_creator::AccountsCreatorError, accounts_file::StateLoaderError,
-        blockhash_updater::BlockhashUpdaterError,
+        blockhash_updater::BlockhashUpdaterError, leader_updater::Error as LeaderUpdaterError,
     },
 };
 

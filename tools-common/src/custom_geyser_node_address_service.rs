@@ -1,5 +1,5 @@
 use {
-    crate::run_rate_latency_tool_scheduler::LeaderSlotEstimator,
+    crate::leader_updater::LeaderSlotEstimator,
     async_stream::stream,
     futures::Stream,
     log::*,

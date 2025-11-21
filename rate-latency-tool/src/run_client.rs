@@ -1,9 +1,8 @@
 use {
     crate::{
-        cli::{ExecutionParams, LeaderTracker, TxAnalysisParams},
+        cli::{ExecutionParams, TxAnalysisParams},
         csv_writer::{run_csv_writer, CSVRecord},
         error::RateLatencyToolError,
-        leader_updater::{create_leader_updater, LeaderUpdaterType},
         run_rate_latency_tool_scheduler::run_rate_latency_tool_scheduler,
         txs_per_block_writer::TxsPerBlockWriter,
         yellowstone_subscriber::run_yellowstone_subscriber,
@@ -32,7 +31,10 @@ use {
         time::sleep,
     },
     tokio_util::sync::CancellationToken,
-    tools_common::{accounts_file::AccountsFile, blockhash_updater::BlockhashUpdater},
+    tools_common::{
+        accounts_file::AccountsFile, blockhash_updater::BlockhashUpdater,
+        leader_updater::create_leader_updater,
+    },
 };
 
 const CSV_RECORD_CHANNEL_SIZE: usize = 128;
@@ -178,31 +180,14 @@ pub async fn run_client(
         refresh_nodes_info_every: Duration::from_secs(30),
         max_consecutive_failures: 5,
     };
-    let updater_type = match leader_tracker {
-        LeaderTracker::PinnedLeaderTracker { address } => {
-            debug!("Using pinned leader updater");
-            LeaderUpdaterType::Pinned(address)
-        }
-        LeaderTracker::LegacyLeaderTracker => {
-            debug!("Using legacy leader updater");
-            LeaderUpdaterType::Legacy(websocket_url)
-        }
-        LeaderTracker::YellowstoneLeaderTracker { url, token } => {
-            debug!("Using yellowstone leader tracker updater");
-            LeaderUpdaterType::YellowstoneLeaderTracker((url, token, config))
-        }
-        LeaderTracker::CustomLeaderTracker { bind_address } => {
-            debug!("Using slot updater leader tracker updater");
-            LeaderUpdaterType::SlotUpdaterTracker((bind_address, config))
-        }
-        LeaderTracker::WsLeaderTracker => {
-            debug!("Using node address service leader tracker updater");
-            LeaderUpdaterType::LeaderTracker((websocket_url, config))
-        }
-    };
-
-    let leader_updater =
-        create_leader_updater(rpc_client.clone(), updater_type, cancel.clone()).await?;
+    let leader_updater = create_leader_updater(
+        rpc_client.clone(),
+        leader_tracker,
+        config,
+        websocket_url,
+        cancel.clone(),
+    )
+    .await?;
 
     let stats = Arc::new(SendTransactionStats::default());
     tasks.spawn({

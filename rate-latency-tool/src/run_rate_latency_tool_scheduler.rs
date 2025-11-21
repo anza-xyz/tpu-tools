@@ -5,7 +5,6 @@ use {
     solana_measure::measure::Measure,
     solana_tpu_client_next::{
         connection_workers_scheduler::{setup_endpoint, ConnectionWorkersSchedulerConfig},
-        leader_updater::LeaderUpdater,
         transaction_batch::TransactionBatch,
         workers_cache::{shutdown_worker, spawn_worker, WorkersCache, WorkersCacheError},
         ConnectionWorkersSchedulerError, SendTransactionStats,
@@ -13,14 +12,8 @@ use {
     std::{sync::Arc, time::Duration},
     tokio::time::interval,
     tokio_util::sync::CancellationToken,
+    tools_common::leader_updater::LeaderUpdaterWithSlot,
 };
-
-pub trait LeaderSlotEstimator {
-    fn get_current_slot(&mut self) -> Slot;
-}
-
-pub trait LeaderUpdaterWithSlot: LeaderUpdater + LeaderSlotEstimator {}
-impl<T> LeaderUpdaterWithSlot for T where T: LeaderUpdater + LeaderSlotEstimator {}
 
 pub async fn run_rate_latency_tool_scheduler<F, S>(
     rate: Duration,
