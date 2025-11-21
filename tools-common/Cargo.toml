@@ -11,6 +11,9 @@ edition = { workspace = true }
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+clap = { workspace = true, features = ["derive", "cargo"] }
+solana-clap-v3-utils = { workspace = true }
+solana-commitment-config = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
