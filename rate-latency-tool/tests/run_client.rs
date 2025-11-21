@@ -8,7 +8,6 @@ use {
     solana_net_utils::SocketAddrSpace,
     solana_pubsub_client::pubsub_client::PubsubClient,
     solana_rate_latency_tool::{
-        accounts_file::create_ephemeral_accounts,
         cli::{AccountParams, ExecutionParams, LeaderTracker, TxAnalysisParams},
         run_client::run_client,
     },
@@ -30,6 +29,7 @@ use {
     },
     tokio::runtime::Builder,
     tokio_util::sync::CancellationToken,
+    tools_common::accounts_file::create_ephemeral_accounts,
 };
 
 #[test]
