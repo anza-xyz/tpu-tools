@@ -1,9 +1,9 @@
 use {
     crate::{
-        run_rate_latency_tool_scheduler::{LeaderSlotEstimator, LeaderUpdaterWithSlot},
-        slot_updater_node_address_service::{
+        custom_geyser_node_address_service::{
             CustomGeyserNodeAddressService, Error as CustomGeyserNodeAddressServiceError,
         },
+        run_rate_latency_tool_scheduler::{LeaderSlotEstimator, LeaderUpdaterWithSlot},
     },
     async_trait::async_trait,
     log::error,
