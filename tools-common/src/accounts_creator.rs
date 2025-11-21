@@ -33,7 +33,7 @@ const ACCOUNT_CREATION_SLEEP_INTERVAL: Duration = Duration::from_millis(150);
 const MAX_CONTINUOUS_FAILED_ATTEMPTS: usize = 100;
 
 #[derive(Error, Debug)]
-pub enum AccountsCreatorError {
+pub enum Error {
     #[error(transparent)]
     ClientError(#[from] ClientError),
 
@@ -66,7 +66,7 @@ impl AccountsCreator {
         }
     }
 
-    pub async fn create(&self) -> Result<AccountsFile, AccountsCreatorError> {
+    pub async fn create(&self) -> Result<AccountsFile, Error> {
         self.ensure_authority_balance().await?;
         let payers = self.create_payers().await;
 
@@ -79,7 +79,7 @@ impl AccountsCreator {
             if !payers.is_empty() {
                 save_partial_results(payers);
             }
-            return Err(AccountsCreatorError::CreateAccountFailure);
+            return Err(Error::CreateAccountFailure);
         }
 
         info!("Payers have been created.");
@@ -87,7 +87,7 @@ impl AccountsCreator {
         Ok(AccountsFile { payers })
     }
 
-    async fn ensure_authority_balance(&self) -> Result<(), AccountsCreatorError> {
+    async fn ensure_authority_balance(&self) -> Result<(), Error> {
         let authority_pubkey = self.authority.pubkey();
         let rpc_client = &*self.rpc_client;
 
@@ -116,14 +116,14 @@ impl AccountsCreator {
         info!("Balance after airdrop {actual_balance}");
 
         if actual_balance < required_balance {
-            return Err(AccountsCreatorError::AirdropFailure);
+            return Err(Error::AirdropFailure);
         }
 
         Ok(())
     }
 
     /// Computes the fee to create account of given size.
-    async fn request_create_account_tx_fee(&self, size: u64) -> Result<u64, AccountsCreatorError> {
+    async fn request_create_account_tx_fee(&self, size: u64) -> Result<u64, Error> {
         // Create dummy create account transaction message to calculate fee
         let rent = self
             .rpc_client

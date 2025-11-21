@@ -1,18 +1,19 @@
 //! Structure used for serializing and deserializing created accounts.
 use {
-    crate::accounts_creator::{AccountsCreator, AccountsCreatorError},
+    crate::accounts_creator::{AccountsCreator, Error as AccountsCreatorError},
     log::error,
     serde::{Deserialize, Serialize},
     solana_keypair::Keypair,
     solana_native_token::LAMPORTS_PER_SOL,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
+    solana_rpc_client_api::client_error::Error as RpcClientError,
     solana_signer::Signer,
     std::{fs::File, io::Write, path::PathBuf, sync::Arc},
     thiserror::Error,
 };
 
 #[derive(Debug, Error)]
-pub enum StateLoaderError {
+pub enum Error {
     #[error(transparent)]
     AccountsCreatorError(#[from] AccountsCreatorError),
 
@@ -24,6 +25,9 @@ pub enum StateLoaderError {
 
     #[error("Could not find validator identity among staked nodes")]
     FindValidatorIdentityFailure,
+
+    #[error(transparent)]
+    RpcClientError(#[from] RpcClientError),
 }
 
 #[derive(Default, Debug, PartialEq)]
@@ -69,7 +73,7 @@ pub async fn create_ephemeral_accounts(
     num_payers: usize,
     payers_account_balance_lamports: u64,
     validate_accounts: bool,
-) -> Result<AccountsFile, StateLoaderError> {
+) -> Result<AccountsFile, Error> {
     let accounts_creator = AccountsCreator::new(
         rpc_client.clone(),
         authority,
@@ -86,7 +90,7 @@ pub async fn create_ephemeral_accounts(
         )
         .await?
     {
-        return Err(StateLoaderError::AccountsValidationFailure);
+        return Err(Error::AccountsValidationFailure);
     }
 
     Ok(accounts)
@@ -99,7 +103,7 @@ pub async fn create_file_persisted_accounts(
     num_payers: usize,
     payers_account_balance: u64,
     validate_accounts: bool,
-) -> Result<(), StateLoaderError> {
+) -> Result<(), Error> {
     let accounts = create_ephemeral_accounts(
         rpc_client,
         authority,
@@ -119,7 +123,7 @@ async fn validate_payers(
     rpc_client: Arc<RpcClient>,
     desired_num: usize,
     desired_balance_lamports: u64,
-) -> Result<bool, AccountsCreatorError> {
+) -> Result<bool, Error> {
     if payers.len() < desired_num {
         error!(
             "Insufficient number of payers {}, while expected {}",

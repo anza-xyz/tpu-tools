@@ -9682,6 +9682,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "tokio-util 0.7.17",
+ "tools-common",
 ]
 
 [[package]]
