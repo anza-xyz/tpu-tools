@@ -1,12 +1,7 @@
 use {
-    crate::{
-        run_rate_latency_tool_scheduler::LeaderSlotEstimator,
-        yellowstone_subscriber::{create_client_config, create_geyser_client, YellowstoneError},
-    },
     futures::Stream,
     futures_util::stream::StreamExt,
     log::*,
-    solana_clock::Slot,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_tpu_client_next::{
         leader_updater::LeaderUpdater,
@@ -14,19 +9,25 @@ use {
             LeaderTpuCacheServiceConfig, NodeAddressService, NodeAddressServiceError, SlotEvent,
         },
     },
-    std::{collections::HashMap, net::SocketAddr, sync::Arc},
+    std::{collections::HashMap, io, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration},
     thiserror::Error,
+    tokio::fs,
     tokio_util::sync::CancellationToken,
     tonic::{async_trait, Status},
-    yellowstone_grpc_proto::geyser::{
-        subscribe_update::UpdateOneof, CommitmentLevel, SlotStatus, SubscribeRequest,
-        SubscribeRequestFilterSlots, SubscribeUpdate, SubscribeUpdateSlot,
+    yellowstone_grpc_client::{
+        ClientTlsConfig, GeyserGrpcBuilderError, GeyserGrpcClient, GeyserGrpcClientError,
+        Interceptor,
+    },
+    yellowstone_grpc_proto::{
+        geyser::{
+            subscribe_update::UpdateOneof, CommitmentLevel, SlotStatus, SubscribeRequest,
+            SubscribeRequestFilterSlots, SubscribeUpdate, SubscribeUpdateSlot,
+        },
+        tonic::transport::Certificate,
     },
 };
 
-pub struct YellowstoneNodeAddressService {
-    service: NodeAddressService,
-}
+pub struct YellowstoneNodeAddressService(pub NodeAddressService);
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -51,11 +52,11 @@ impl YellowstoneNodeAddressService {
 
         let service = NodeAddressService::run(rpc_client, filtered_stream, config, cancel).await?;
 
-        Ok(Self { service })
+        Ok(Self(service))
     }
 
     pub async fn shutdown(&mut self) -> Result<(), Error> {
-        self.service.shutdown().await?;
+        self.0.shutdown().await?;
         Ok(())
     }
 }
@@ -145,7 +146,7 @@ fn build_request() -> SubscribeRequest {
 #[async_trait]
 impl LeaderUpdater for YellowstoneNodeAddressService {
     fn next_leaders(&mut self, lookahead_leaders: usize) -> Vec<SocketAddr> {
-        self.service.next_leaders(lookahead_leaders)
+        self.0.next_leaders(lookahead_leaders)
     }
 
     async fn stop(&mut self) {
@@ -153,9 +154,69 @@ impl LeaderUpdater for YellowstoneNodeAddressService {
     }
 }
 
-#[async_trait]
-impl LeaderSlotEstimator for YellowstoneNodeAddressService {
-    fn get_current_slot(&mut self) -> Slot {
-        self.service.estimated_current_slot()
+#[derive(Debug, Error)]
+pub enum YellowstoneError {
+    #[error(transparent)]
+    Builder(#[from] GeyserGrpcBuilderError),
+
+    #[error(transparent)]
+    GeyserGrpcClientError(#[from] GeyserGrpcClientError),
+
+    #[error(transparent)]
+    Io(#[from] io::Error),
+
+    #[error("Transaction update doesn't have transaction data.")]
+    EmptyTransactionUpdate,
+
+    #[error("Unexpected error.")]
+    UnexpectedError,
+}
+
+pub(crate) struct ClientConfig {
+    ca_certificate: Option<PathBuf>,
+    yellowstone_url: String,
+    x_token: Option<String>,
+    max_decoding_message_size: usize,
+    timeout: Duration,
+}
+
+pub(crate) async fn create_geyser_client(
+    ClientConfig {
+        ca_certificate,
+        yellowstone_url,
+        x_token,
+        max_decoding_message_size,
+        timeout,
+    }: ClientConfig,
+) -> Result<GeyserGrpcClient<impl Interceptor>, YellowstoneError> {
+    let mut tls_config = ClientTlsConfig::new().with_native_roots();
+    if let Some(path) = ca_certificate {
+        let bytes = fs::read(path).await?;
+        tls_config = tls_config.ca_certificate(Certificate::from_pem(bytes));
+    }
+
+    let builder = GeyserGrpcClient::build_from_shared(yellowstone_url)?
+        .x_token(x_token)?
+        .tls_config(tls_config)?
+        .max_decoding_message_size(max_decoding_message_size)
+        .connect_timeout(timeout)
+        .keep_alive_timeout(timeout)
+        .tcp_nodelay(true)
+        .http2_adaptive_window(true)
+        .timeout(timeout);
+    let client = builder.connect().await?;
+    Ok(client)
+}
+
+pub(crate) fn create_client_config(
+    yellowstone_url: &str,
+    yellowstone_token: Option<&str>,
+) -> ClientConfig {
+    ClientConfig {
+        ca_certificate: None, // TODO: set this to a default CA certificate path
+        yellowstone_url: yellowstone_url.to_string(),
+        x_token: yellowstone_token.map(|token| token.to_string()),
+        max_decoding_message_size: 16 * 1024 * 1024,
+        timeout: Duration::from_secs(30), // 30 seconds
     }
 }

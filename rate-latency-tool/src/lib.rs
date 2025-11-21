@@ -9,5 +9,4 @@ pub mod run_client;
 pub mod run_rate_latency_tool_scheduler;
 pub mod slot_updater_node_address_service;
 pub mod txs_per_block_writer;
-pub mod yellowstone_leader_tracker;
 pub mod yellowstone_subscriber;

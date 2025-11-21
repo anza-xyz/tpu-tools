@@ -4,9 +4,6 @@ use {
         slot_updater_node_address_service::{
             CustomGeyserNodeAddressService, Error as CustomGeyserNodeAddressServiceError,
         },
-        yellowstone_leader_tracker::{
-            Error as YellowstoneNodeAddressServiceError, YellowstoneNodeAddressService,
-        },
     },
     async_trait::async_trait,
     log::error,
@@ -30,6 +27,9 @@ use {
     },
     thiserror::Error,
     tokio_util::sync::CancellationToken,
+    tpu_client_next_extensions::yellowstone_leader_tracker::{
+        Error as YellowstoneNodeAddressServiceError, YellowstoneNodeAddressService,
+    },
 };
 
 pub enum LeaderUpdaterType {
@@ -164,5 +164,12 @@ impl LeaderUpdater for PinnedLeaderUpdater {
 impl LeaderSlotEstimator for PinnedLeaderUpdater {
     fn get_current_slot(&mut self) -> Slot {
         0
+    }
+}
+
+#[async_trait]
+impl LeaderSlotEstimator for YellowstoneNodeAddressService {
+    fn get_current_slot(&mut self) -> Slot {
+        self.0.estimated_current_slot()
     }
 }

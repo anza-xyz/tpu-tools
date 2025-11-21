@@ -10,6 +10,15 @@ edition = { workspace = true }
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
+[features]
+default = ["leader_tracker"]
+leader_tracker = [
+    "futures-util",
+    "solana-epoch-schedule",
+    "solana-pubsub-client",
+    "solana-quic-definitions",
+]
+
 [dependencies]
 async-std = { workspace = true }
 async-stream = { workspace = true }
@@ -56,6 +65,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tonic = { workspace = true }
+tpu-client-next-extensions = { workspace = true }
 yellowstone-grpc-client = { workspace = true }
 yellowstone-grpc-proto = { workspace = true }
 
@@ -73,12 +83,3 @@ solana-sdk-ids = { workspace = true }
 solana-sha256-hasher = { workspace = true }
 solana-streamer = { workspace = true, features = ["dev-context-only-utils"] }
 solana-test-validator = { workspace = true }
-
-[features]
-default = ["leader_tracker"]
-leader_tracker = [
-    "futures-util",
-    "solana-epoch-schedule",
-    "solana-pubsub-client",
-    "solana-quic-definitions"
-]
