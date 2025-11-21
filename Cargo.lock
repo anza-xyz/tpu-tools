@@ -8469,9 +8469,7 @@ dependencies = [
  "solana-rent",
  "solana-rpc",
  "solana-rpc-client",
- "solana-rpc-client-api",
  "solana-sdk-ids",
- "solana-sha256-hasher",
  "solana-signature",
  "solana-signer",
  "solana-streamer",
@@ -8486,6 +8484,7 @@ dependencies = [
  "tokio",
  "tokio-util 0.7.17",
  "tonic 0.14.2",
+ "tools-common",
  "tpu-client-next-extensions",
  "yellowstone-grpc-client",
  "yellowstone-grpc-proto",
@@ -11063,6 +11062,19 @@ dependencies = [
  "syn 2.0.110",
  "tempfile",
  "tonic-build 0.14.2",
+]
+
+[[package]]
+name = "tools-common"
+version = "1.0.0"
+dependencies = [
+ "log",
+ "solana-hash",
+ "solana-rpc-client",
+ "solana-rpc-client-api",
+ "solana-sha256-hasher",
+ "thiserror 2.0.17",
+ "tokio",
 ]
 
 [[package]]

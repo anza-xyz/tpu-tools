@@ -1,5 +1,5 @@
 [workspace]
-members = ["rate-latency-tool", "tpu-client-next-extensions"]
+members = ["rate-latency-tool", "tools-common", "tpu-client-next-extensions"]
 
 resolver = "2"
 
@@ -22,6 +22,7 @@ manual_let_else = "deny"
 used_underscore_binding = "deny"
 
 [workspace.dependencies]
+tools-common = { path = "tools-common" }
 async-std = "1.12.0"
 async-stream = "0.3.6"
 async-trait = "0.1.89"

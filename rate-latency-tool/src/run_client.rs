@@ -1,7 +1,6 @@
 use {
     crate::{
         accounts_file::AccountsFile,
-        blockhash_updater::BlockhashUpdater,
         cli::{ExecutionParams, LeaderTracker, TxAnalysisParams},
         csv_writer::{run_csv_writer, CSVRecord},
         error::RateLatencyToolError,
@@ -34,6 +33,7 @@ use {
         time::sleep,
     },
     tokio_util::sync::CancellationToken,
+    tools_common::blockhash_updater::BlockhashUpdater,
 };
 
 const CSV_RECORD_CHANNEL_SIZE: usize = 128;

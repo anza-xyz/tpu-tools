@@ -1,0 +1,25 @@
+[package]
+name = "tools-common"
+version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+log = { workspace = true }
+solana-hash = { workspace = true }
+thiserror = { workspace = true }
+solana-rpc-client = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+solana-rpc-client-api = { workspace = true }
+solana-sha256-hasher = { workspace = true }
+
+[lints]
+workspace = true
