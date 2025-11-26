@@ -110,8 +110,6 @@ impl TransactionGenerator {
                 let transaction_params = self.transaction_params.clone();
                 let payers = payers.clone();
                 let transactions_sender = self.transactions_sender.clone();
-
-                //TODO(klykov): temporary fix
                 let transaction_type = TransactionType::Transfer;
 
                 match transaction_type {
@@ -136,9 +134,7 @@ impl TransactionGenerator {
                             send_batch(wired_tx_batch, transactions_sender).await;
                         });
                         // 2 * self.send_batch_size because for simple transfer
-                        // we form transactions as follows: p1 -> p2, p3 -> p4,
-                        // etc.
-                        // Note, that sized accounts are not used so there is no reason to increment this counter.
+                        // we form transactions as follows: p1 -> p2, p3 -> p4, etc.
                         index_payer = index_payer.saturating_add(
                             2 * num_send_instructions_per_tx * self.send_batch_size,
                         ) % len_payers;

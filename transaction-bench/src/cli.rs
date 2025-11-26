@@ -145,8 +145,6 @@ pub struct TransactionParams {
     #[clap(flatten)]
     pub simple_transfer_tx_params: SimpleTransferTxParams,
     //TODO(klykov): memo
-    //#[clap(flatten)]
-    //pub simple_transfer_tx_params: SimpleTransferTxParams,
 }
 
 #[derive(Args, Clone, Debug, PartialEq, Eq)]
