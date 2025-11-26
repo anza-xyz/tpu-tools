@@ -11,7 +11,7 @@ resolver = "2"
 [workspace.package]
 version = "1.0.0"
 authors = ["Anza Maintainers <maintainers@anza.xyz>"]
-repository = "https://github.com/anza-xyz/rate-latency-tool"
+repository = "https://github.com/anza-xyz/tpu-tools"
 homepage = "https://anza.xyz/"
 license = "Apache-2.0"
 edition = "2021"
