@@ -158,11 +158,9 @@ pub struct TxAnalysisParams {
 
     #[clap(
         long,
-        requires = "yellowstone_url",
-        help = "File to write mapping between slot and number of transactions in the \
-                corresponding block."
+        help = "Check all transactions, not only those from target accounts."
     )]
-    pub txs_per_block_file: Option<PathBuf>,
+    pub check_all_txs: bool,
 }
 
 pub fn build_cli_parameters() -> ClientCliParameters {
@@ -228,7 +226,7 @@ mod tests {
                 output_csv_file: Some(PathBuf::from(csv_file.to_string())),
                 yellowstone_url: Some(yellowstone_url.to_string()),
                 yellowstone_token: None,
-                txs_per_block_file: None,
+                check_all_txs: false,
             },
         )
     }

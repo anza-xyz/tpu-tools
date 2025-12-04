@@ -54,6 +54,10 @@ const MAX_RECONNECT_ATTEMPTS: usize = 5;
 /// How often tpu-client-next reports network metrics.
 const METRICS_REPORTING_INTERVAL: Duration = Duration::from_secs(1);
 
+/// Default number of streams per connection if stake-based computation fails.
+/// This failure happens if we use stake overrides.
+const DEFAULT_NUM_STREAMS_PER_CONNECTION: usize = 8;
+
 fn main() {
     agave_logger::setup_with_default("solana=info");
 
@@ -228,7 +232,8 @@ async fn run_client(
         &rpc_client,
         validator_identity.as_ref().map(|keypair| keypair.pubkey()),
     )
-    .await?;
+    .await
+    .unwrap_or(DEFAULT_NUM_STREAMS_PER_CONNECTION);
     let send_batch_size = num_streams_per_connection;
     info!("Number of streams per connection is {num_streams_per_connection}.");
 
