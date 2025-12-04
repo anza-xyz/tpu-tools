@@ -228,7 +228,8 @@ async fn run_client(
         &rpc_client,
         validator_identity.as_ref().map(|keypair| keypair.pubkey()),
     )
-    .await?;
+    .await
+    .unwrap_or(8);
     let send_batch_size = num_streams_per_connection;
     info!("Number of streams per connection is {num_streams_per_connection}.");
 

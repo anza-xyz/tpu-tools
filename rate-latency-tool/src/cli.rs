@@ -163,6 +163,12 @@ pub struct TxAnalysisParams {
                 corresponding block."
     )]
     pub txs_per_block_file: Option<PathBuf>,
+
+    #[clap(
+        long,
+        help = "Check all transactions, not only those from target accounts."
+    )]
+    pub check_all_txs: bool,
 }
 
 pub fn build_cli_parameters() -> ClientCliParameters {
@@ -229,6 +235,7 @@ mod tests {
                 yellowstone_url: Some(yellowstone_url.to_string()),
                 yellowstone_token: None,
                 txs_per_block_file: None,
+                check_all_txs: false,
             },
         )
     }

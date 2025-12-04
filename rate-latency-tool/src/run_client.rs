@@ -5,7 +5,9 @@ use {
         error::RateLatencyToolError,
         run_rate_latency_tool_scheduler::run_rate_latency_tool_scheduler,
         txs_per_block_writer::TxsPerBlockWriter,
-        yellowstone_subscriber::run_yellowstone_subscriber,
+        yellowstone_subscriber::{
+            run_yellowstone_subscriber_all_txs, run_yellowstone_subscriber_filtered,
+        },
     },
     log::*,
     solana_clock::Slot,
@@ -70,6 +72,7 @@ pub async fn run_client(
         yellowstone_url,
         yellowstone_token,
         txs_per_block_file,
+        check_all_txs,
     }: TxAnalysisParams,
     cancel: CancellationToken,
 ) -> Result<(), RateLatencyToolError> {
@@ -92,13 +95,13 @@ pub async fn run_client(
     if let Some(output_csv_file) = output_csv_file {
         let yellowstone_url = yellowstone_url
             .expect("yellowstone-url should be required in cla when csv-file specified.");
-        let (csv_sender, csv_receiver) = mpsc::channel(CSV_RECORD_CHANNEL_SIZE);
+        let (block_tx_sender, block_tx_receiver) = mpsc::channel(CSV_RECORD_CHANNEL_SIZE);
         tasks.spawn({
             let cancel = cancel.clone();
             async move {
                 run_csv_writer(
                     output_csv_file,
-                    csv_receiver,
+                    block_tx_receiver,
                     tx_tracker_receiver,
                     cancel.clone(),
                 )
@@ -126,18 +129,34 @@ pub async fn run_client(
             .map(|keypair| keypair.pubkey())
             .collect();
         let cancel = cancel.clone();
-        tasks.spawn(async move {
-            run_yellowstone_subscriber(
-                &yellowstone_url,
-                yellowstone_token.as_deref(),
-                &account_pubkeys,
-                csv_sender,
-                num_txs_per_block_sender,
-                cancel,
-            )
-            .await?;
-            Ok(())
-        });
+        if check_all_txs {
+            let rpc_client = rpc_client.clone();
+            tasks.spawn(async move {
+                run_yellowstone_subscriber_all_txs(
+                    &yellowstone_url,
+                    yellowstone_token.as_deref(),
+                    &account_pubkeys,
+                    block_tx_sender,
+                    rpc_client,
+                    cancel,
+                )
+                .await?;
+                Ok(())
+            });
+        } else {
+            tasks.spawn(async move {
+                run_yellowstone_subscriber_filtered(
+                    &yellowstone_url,
+                    yellowstone_token.as_deref(),
+                    &account_pubkeys,
+                    block_tx_sender,
+                    num_txs_per_block_sender,
+                    cancel,
+                )
+                .await?;
+                Ok(())
+            });
+        }
     }
 
     let cancel_tx_sending = cancel.child_token();
@@ -249,14 +268,17 @@ pub async fn run_client(
                     );
                     let record = CSVRecord {
                         signature: signature.to_string(),
-                        transaction_id: copy_tx_id,
-                        sent_slot: current_slot,
+                        transaction_id: Some(copy_tx_id),
+                        sent_slot: Some(current_slot),
                         received_slot: None,
-                        sent_timestamp: timestamp,
+                        sent_timestamp: Some(timestamp),
                         received_timestamp: None,
                         received_subscr_timestamp: None,
                         index_in_block: None,
                         tx_status: vec![],
+                        tick: None,
+                        tx_type: Some("TargetTpu".to_string()),
+                        num_transaction_in_block: None,
                     };
                     (copy_tx_id, tx, record)
                 },

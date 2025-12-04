@@ -102,10 +102,14 @@ fn map_yellowstone_update_to_slot_event(
     {
         UpdateOneof::Slot(SubscribeUpdateSlot { slot, status, .. }) => {
             match SlotStatus::try_from(status).expect("Should be valid status code") {
-                // This update indicates that we have just received the first shred from
+                // SlotFirstShredReceived update indicates that we have just received the first shred from
                 // the leader for this slot and they are probably still accepting transactions.
-                SlotStatus::SlotFirstShredReceived => Some(SlotEvent::Start(slot)),
-                //TODO(klykov): fall back on bank created to use with solana test validator
+                // For the cluster with 1 node there are no SlotFirstShredReceived updates, so we
+                // use SlotCreatedBank as a fallback.
+                SlotStatus::SlotFirstShredReceived | SlotStatus::SlotCreatedBank => {
+                    Some(SlotEvent::Start(slot))
+                }
+
                 // This update indicates that a full slot was received by the connected
                 // node so we can stop sending transactions to the leader for that slot
                 SlotStatus::SlotCompleted => Some(SlotEvent::End(slot)),

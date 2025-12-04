@@ -32,14 +32,17 @@ pub enum TransactionSendStatus {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CSVRecord {
     pub signature: String,
-    pub transaction_id: usize,
-    pub sent_slot: u64,
+    pub transaction_id: Option<usize>,
+    pub sent_slot: Option<u64>,
     pub received_slot: Option<u64>,
-    pub sent_timestamp: u64,
+    pub sent_timestamp: Option<u64>,
     pub received_timestamp: Option<u64>,
     pub received_subscr_timestamp: Option<u64>,
     pub index_in_block: Option<u64>,
     pub tx_status: Vec<(TransactionSendStatus, String)>,
+    pub tick: Option<u64>,
+    pub tx_type: Option<String>,
+    pub num_transaction_in_block: Option<usize>,
 }
 
 impl CSVRecord {
@@ -54,18 +57,27 @@ impl CSVRecord {
             "received_subscr_timestamp",
             "index_in_block",
             "tx_status",
+            "tick",
+            "tx_type",
+            "num_transaction_in_block",
         ]
     }
 
     pub fn as_csv_record(&self) -> Vec<String> {
         vec![
             self.signature.clone(),
-            self.transaction_id.to_string(),
-            self.sent_slot.to_string(),
+            self.transaction_id
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
+            self.sent_slot
+                .map(|slot| slot.to_string())
+                .unwrap_or_default(),
             self.received_slot
                 .map(|slot| slot.to_string())
                 .unwrap_or_default(),
-            self.sent_timestamp.to_string(),
+            self.sent_timestamp
+                .map(|ts| ts.to_string())
+                .unwrap_or_default(),
             self.received_timestamp
                 .map(|ts| ts.to_string())
                 .unwrap_or_default(),
@@ -80,6 +92,11 @@ impl CSVRecord {
                 .map(|(status, address)| format!("{status:?}({address})"))
                 .collect::<Vec<_>>()
                 .join("|"),
+            self.tick.map(|ts| ts.to_string()).unwrap_or_default(),
+            self.tx_type.clone().unwrap_or_default(),
+            self.num_transaction_in_block
+                .map(|num| num.to_string())
+                .unwrap_or_default(),
         ]
     }
 }
@@ -126,8 +143,10 @@ pub async fn run_csv_writer(
                 }
 
                 for mut record in complete_records.drain(..) {
-                    if let Some(pending) = pending_txs.remove(&record.transaction_id) {
-                        record.tx_status = pending.tx_status;
+                    if let Some(transaction_id) = record.transaction_id {
+                        if let Some(pending) = pending_txs.remove(&transaction_id) {
+                            record.tx_status = pending.tx_status;
+                        }
                     }
 
                     if let Err(e) = csv_writer.write_record(record.as_csv_record()).await {
@@ -142,6 +161,7 @@ pub async fn run_csv_writer(
                 }
             }
             received = tx_tracker_receiver.recv_many(&mut sent_records, 16) => {
+                // these transactions were sent, so we know that transaction_id is there
                 debug!("CSV writer received {} records.", sent_records.len());
                 if received == 0 {
                     info!("Sender for records has been dropped. Stopping csv writer...");
@@ -149,14 +169,15 @@ pub async fn run_csv_writer(
                 }
 
                 for record in sent_records.drain(..) {
-                    pending_txs.insert(record.transaction_id, record);
+                    pending_txs.insert(record.transaction_id.unwrap(), record);
                 }
             }
             _ = ticker.tick() => {
+                // pending txs are those which we sent, so by construction they have timestamp
                 let now = timestamp();
                 let mut to_remove = Vec::new();
                 for (id, rec) in pending_txs.iter() {
-                    let age = now.saturating_sub(rec.sent_timestamp);
+                    let age = now.saturating_sub(rec.sent_timestamp.unwrap());
                     if age > MAX_TX_AGE_MS {
                         if let Err(e) = csv_writer.write_record(rec.as_csv_record()).await {
                             error!("Write csv failed: {e}");
