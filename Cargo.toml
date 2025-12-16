@@ -79,7 +79,7 @@ solana-sha256-hasher = "3.0.1"
 solana-signature = { version = "3.1.0" }
 solana-signer = "3.0.0"
 solana-streamer = { git = "https://github.com/anza-xyz/agave.git", rev = "7d7973", features = ["agave-unstable-api"] }
-solana-system-interface = "2.0"
+solana-system-interface = "3.0"
 solana-test-validator = { git = "https://github.com/anza-xyz/agave.git", rev = "7d7973", features = ["agave-unstable-api"] }
 solana-time-utils = "3.0.0"
 solana-tpu-client = { git = "https://github.com/anza-xyz/agave.git", rev = "7d7973", features = ["agave-unstable-api"] }
