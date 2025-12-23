@@ -111,7 +111,7 @@ fn test_transactions_sending() {
                 output_csv_file: None,
                 yellowstone_url: None,
                 yellowstone_token: None,
-                txs_per_block_file: None,
+                check_all_txs: false,
             },
             cancel,
         )

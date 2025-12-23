@@ -37,7 +37,7 @@ FUNDER="funder.json"
 IDENTITY="validator_identity.json" # for staked connection
 DURATION=600
 
-$TOOL -ut --authority $FUNDER --validate-accounts read-accounts-run  --accounts-file accounts.json --staked-identity-file $IDENTITY --send-interval 50 --duration $DURATION --compute-unit-price 10 --yellowstone-url "http://api.testnet.solana.com" --send-fanout $FANOUT  --output-csv-file out.csv --txs-per-block-file "slot_to_num.csv" yellowstone-leader-tracker "http://api.testnet.solana.com"  2> err.txt
+$TOOL -ut --authority $FUNDER --validate-accounts read-accounts-run  --accounts-file accounts.json --staked-identity-file $IDENTITY --send-interval 50 --duration $DURATION --compute-unit-price 10 --yellowstone-url "http://api.testnet.solana.com" --send-fanout $FANOUT  --output-csv-file out.csv yellowstone-leader-tracker "http://api.testnet.solana.com"  2> err.txt
 ```
 
 ### How to analyze the results
