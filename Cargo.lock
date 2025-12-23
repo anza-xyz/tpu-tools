@@ -9680,6 +9680,7 @@ dependencies = [
  "solana-tpu-client-next",
  "solana-transaction",
  "thiserror 2.0.17",
+ "tikv-jemallocator",
  "tokio",
  "tokio-util 0.7.17",
  "tools-common",

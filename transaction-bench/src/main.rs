@@ -42,6 +42,10 @@ use {
     },
 };
 
+#[cfg(not(any(target_env = "msvc", target_os = "freebsd")))]
+#[global_allocator]
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 const GENERATOR_CHANNEL_SIZE: usize = 32;
 
 /// Empirically chosen size of the connection worker channel. Lower/higher values gives
