@@ -36,7 +36,8 @@ use {
     },
 };
 
-const CSV_RECORD_CHANNEL_SIZE: usize = 128;
+/// Size of the channel for sending CSV records from the transaction sender.
+const CSV_RECORD_CHANNEL_SIZE: usize = 1024;
 
 /// Memo transcaction CU price depends on the message size, but generally it is
 /// in range 9000-20000.
