@@ -3,14 +3,19 @@ use {
     csv_async::{AsyncWriterBuilder, QuoteStyle},
     log::{debug, error, info},
     solana_time_utils::timestamp,
-    std::{collections::BTreeMap, path::PathBuf, time::Duration},
+    std::{
+        collections::BTreeMap,
+        path::PathBuf,
+        sync::{Arc, Mutex},
+        time::Duration,
+    },
     thiserror::Error,
     tokio::{
         select,
-        sync::mpsc::{Receiver, UnboundedReceiver},
+        sync::mpsc::{unbounded_channel, Receiver, UnboundedReceiver},
         time::interval,
     },
-    tokio_util::sync::CancellationToken,
+    tokio_util::{sync::CancellationToken, task::TaskTracker},
 };
 
 #[derive(Debug, Error)]
@@ -107,6 +112,11 @@ impl CSVRecord {
 /// just to be sure that we don't flush it erroneously.
 const MAX_TX_AGE_MS: u64 = (150 + 25) * 400;
 
+/// Number of records to read at once from the channel to hide latency of channel operations.
+const READ_AT_ONCE: usize = 16;
+/// A larger number when writing to CSV to reduce the number of write calls.
+const READ_AT_ONCE_FOR_CSV: usize = 128;
+
 pub async fn run_csv_writer(
     file: PathBuf,
     mut block_tx_receiver: Receiver<CSVRecord>,
@@ -126,95 +136,145 @@ pub async fn run_csv_writer(
         .await
         .expect("Should be able to write to csv");
 
-    let mut complete_records = Vec::with_capacity(16);
-    let mut sent_records = Vec::with_capacity(16);
-    let mut result = Ok(());
-    let mut pending_txs = BTreeMap::<usize, CSVRecord>::new();
+    let pending_txs = Arc::new(Mutex::new(BTreeMap::<usize, CSVRecord>::new()));
 
-    let mut ticker = interval(Duration::from_millis(MAX_TX_AGE_MS));
+    let (writer_sender, mut writer_receiver) = unbounded_channel();
 
-    loop {
-        select! {
-            received = block_tx_receiver.recv_many(&mut complete_records, 16) => {
-                debug!("CSV writer received {} records.", complete_records.len());
-                if received == 0 {
-                    info!("Sender for records has been dropped. Stopping csv writer...");
-                    break;
-                }
-
-                for mut record in complete_records.drain(..) {
-                    if let Some(transaction_id) = record.transaction_id {
-                        if let Some(pending) = pending_txs.remove(&transaction_id) {
-                            record.tx_status = pending.tx_status;
-                        }
-                    }
-
-                    if let Err(e) = csv_writer.write_record(record.as_csv_record()).await {
-                        error!("Write csv failed: {e}");
-                        result = Err(CSVWriterError::WritingError);
-                    }
-                }
-                if let Err(e) = csv_writer.flush().await {
-                    error!("Flush csv failed: {e}");
-                    result = Err(CSVWriterError::WritingError);
-                    break;
-                }
-            }
-            received = tx_tracker_receiver.recv_many(&mut sent_records, 16) => {
-                debug!("CSV writer received {} records.", sent_records.len());
-                if received == 0 {
-                    info!("Sender for records has been dropped. Stopping csv writer...");
-                    break;
-                }
-
-                for record in sent_records.drain(..) {
-                    // these transactions were sent, so we know that transaction_id is there
-                    pending_txs.insert(record.transaction_id.unwrap(), record);
-                }
-            }
-            _ = ticker.tick() => {
-                // pending txs are those which we sent, so by construction they have timestamp
-                let now = timestamp();
-                let mut to_remove = Vec::new();
-                for (id, rec) in pending_txs.iter() {
-                    let age = now.saturating_sub(rec.sent_timestamp.unwrap());
-                    if age > MAX_TX_AGE_MS {
-                        if let Err(e) = csv_writer.write_record(rec.as_csv_record()).await {
-                            error!("Write csv failed: {e}");
-                            result = Err(CSVWriterError::WritingError);
-                        }
-                        to_remove.push(*id);
-                    } else {
-                        // Since map is sorted by id (and in your case, by time),
-                        // everything after this will be newer → stop iterating
+    let tracker = TaskTracker::new();
+    tracker.spawn({
+        let cancel = cancel.clone();
+        let pending_txs = pending_txs.clone();
+        let writer_sender = writer_sender.clone();
+        async move {
+            let main_loop = async move {
+                let mut complete_records = Vec::with_capacity(READ_AT_ONCE);
+                loop {
+                    let received = block_tx_receiver
+                        .recv_many(&mut complete_records, READ_AT_ONCE)
+                        .await;
+                    debug!("CSV writer received {} records.", complete_records.len());
+                    if received == 0 {
+                        info!("Sender for records has been dropped. Stopping csv writer...");
                         break;
                     }
+
+                    for mut record in complete_records.drain(..) {
+                        if let Some(transaction_id) = record.transaction_id {
+                            if let Some(pending) =
+                                pending_txs.lock().unwrap().remove(&transaction_id)
+                            {
+                                record.tx_status = pending.tx_status;
+                            }
+                        }
+
+                        if let Err(e) = writer_sender.send(record.as_csv_record()) {
+                            error!("Write csv failed: {e}");
+                        }
+                    }
                 }
-                for id in to_remove {
-                    pending_txs.remove(&id);
+            };
+            cancel.run_until_cancelled(main_loop).await;
+        }
+    });
+
+    let mut ticker = interval(Duration::from_millis(MAX_TX_AGE_MS));
+    tracker.spawn({
+        let pending_txs = pending_txs.clone();
+        let writer_sender = writer_sender.clone();
+        let cancel = cancel.clone();
+        async move {
+            let main_loop = async move {
+                loop {
+                    let _ = ticker.tick().await;
+                    // pending txs are those which we sent, so by construction they have timestamp
+                    let now = timestamp();
+                    let mut to_remove = Vec::new();
+                    let mut pending_txs = pending_txs.lock().unwrap();
+                    for (id, rec) in pending_txs.iter() {
+                        let age = now.saturating_sub(rec.sent_timestamp.unwrap());
+                        if age > MAX_TX_AGE_MS {
+                            if let Err(e) = writer_sender.send(rec.as_csv_record()) {
+                                error!("Closed channel for writer: {e}");
+                                break;
+                            }
+                            to_remove.push(*id);
+                        } else {
+                            // Since map is sorted by id (and in your case, by time),
+                            // everything after this will be newer → stop iterating
+                            break;
+                        }
+                    }
+                    for id in to_remove {
+                        pending_txs.remove(&id);
+                    }
                 }
-                if let Err(e) = csv_writer.flush().await {
-                    error!("Flush csv failed: {e}");
-                    result = Err(CSVWriterError::WritingError);
+            };
+            cancel.run_until_cancelled(main_loop).await;
+        }
+    });
+
+    tracker.spawn({
+        let cancel = cancel.clone();
+        let pending_txs = pending_txs.clone();
+        async move {
+        let mut sent_records = Vec::with_capacity(READ_AT_ONCE);
+        loop {
+            select! {
+                received = tx_tracker_receiver.recv_many(&mut sent_records, READ_AT_ONCE) => {
+                    debug!("CSV writer received {} records.", sent_records.len());
+                    if received == 0 {
+                        info!("Sender for records has been dropped. Stopping csv writer...");
+                        break;
+                    }
+
+                    let mut pending_txs = pending_txs.lock().unwrap();
+
+                    for record in sent_records.drain(..) {
+                        // these transactions were sent, so we know that transaction_id is there
+                        pending_txs.insert(record.transaction_id.unwrap(), record);
+                    }
+                }
+                _ = cancel.cancelled() => {
+                    info!("Cancellation received, dumping all pending txs and stopping tx tracker csv writer.");
+                    // dump those which are still pending
+                    let pending_txs = pending_txs.lock().unwrap();
+                    for (_id, rec) in pending_txs.iter() {
+                        if let Err(e) = writer_sender.send(rec.as_csv_record()) {
+                            error!("Send csv failed: {e}");
+                        }
+                    }
                     break;
                 }
             }
-            _ = cancel.cancelled() => {
+        }
+    }});
+
+    tracker.spawn(async move {
+        let mut complete_records = Vec::with_capacity(READ_AT_ONCE_FOR_CSV);
+        loop {
+            let received = writer_receiver
+                .recv_many(&mut complete_records, READ_AT_ONCE_FOR_CSV)
+                .await;
+            if received == 0 {
+                info!("Writer channel closed. Stopping csv writer...");
+                break;
+            }
+            for record in complete_records.drain(..) {
+                if let Err(e) = csv_writer.write_record(record).await {
+                    error!("Write csv failed: {e}");
+                }
+            }
+            if let Err(e) = csv_writer.flush().await {
+                error!("Flush csv failed: {e}");
                 break;
             }
         }
-    }
-    // dump those which are still pending
-    for (_id, rec) in pending_txs.iter() {
-        if let Err(e) = csv_writer.write_record(rec.as_csv_record()).await {
-            error!("Write csv failed: {e}");
-            result = Err(CSVWriterError::WritingError);
-        }
-    }
-    if let Err(e) = csv_writer.flush().await {
-        error!("Flush CSV writer should succeed, error instead is: {e}");
-        result = Err(CSVWriterError::WritingError);
-    }
+    });
 
-    result
+    tracker.close();
+    debug!("Waiting for CSV writer tasks to finish...");
+    tracker.wait().await;
+    debug!("CSV writer tasks finished.");
+
+    Ok(())
 }
