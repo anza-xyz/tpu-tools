@@ -63,23 +63,16 @@ where
             // add future leaders to the cache to hide the latency of opening
             // the connection.
             for peer in connect_leaders {
-                debug!("Checking connection to the peer: {peer}");
-                if !workers.contains(&peer) {
-                    debug!("Creating connection to the peer: {peer}");
-                    let worker = spawn_worker(
-                        &endpoint,
-                        &peer,
-                        worker_channel_size,
-                        skip_check_transaction_age,
-                        max_reconnect_attempts,
-                        handshake_timeout,
-                        stats.clone(),
-                    );
-                    if let Some(pop_worker) = workers.push(peer, worker) {
-                        shutdown_worker(pop_worker)
-                    }
-                } else {
-                    debug!("Connection to the peer {peer} exists.");
+                if let Some(evicted_worker) = workers.ensure_worker(
+                    peer,
+                    &endpoint,
+                    worker_channel_size,
+                    skip_check_transaction_age,
+                    max_reconnect_attempts,
+                    handshake_timeout,
+                    stats.clone(),
+                ) {
+                    shutdown_worker(evicted_worker);
                 }
             }
 
