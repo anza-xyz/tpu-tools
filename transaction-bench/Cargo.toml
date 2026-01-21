@@ -19,6 +19,8 @@ chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "cargo"] }
 futures = { workspace = true }
 itertools = { workspace = true }
+[target.'cfg(not(any(target_env = "msvc", target_os = "freebsd")))'.dependencies]
+jemallocator = { workspace = true }
 log = { workspace = true }
 lru = { workspace = true }
 rand = { workspace = true }

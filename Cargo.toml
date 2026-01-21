@@ -41,6 +41,9 @@ csv-async = "1.2"
 futures = "0.3.31"
 futures-util = "0.3.29"
 itertools = "0.12.1"
+jemallocator = { package = "tikv-jemallocator", version = "0.6.0", features = [
+    "unprefixed_malloc_on_supported_platforms",
+] }
 log = "0.4.27"
 lru = "0.7.7"
 rand = "0.8.5"
