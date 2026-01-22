@@ -132,7 +132,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "agave-feature-set",
- "bincode",
+ "bincode 1.3.3",
  "digest 0.10.7",
  "ed25519-dalek 1.0.1",
  "libsecp256k1",
@@ -185,7 +185,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "agave-fs",
- "bincode",
+ "bincode 1.3.3",
  "bzip2",
  "crossbeam-channel",
  "log",
@@ -213,7 +213,7 @@ name = "agave-syscalls"
 version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "libsecp256k1",
  "num-traits",
  "solana-account",
@@ -283,7 +283,7 @@ dependencies = [
  "agave-logger",
  "agave-votor-messages",
  "anyhow",
- "bincode",
+ "bincode 1.3.3",
  "bitvec",
  "bs58",
  "crossbeam-channel",
@@ -1234,6 +1234,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "bincode"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
+dependencies = [
+ "bincode_derive",
+ "serde",
+ "unty",
+]
+
+[[package]]
+name = "bincode_derive"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf95709a440f45e986983918d0e8a1f30a9b1df04918fc828670606804ac3c09"
+dependencies = [
+ "virtue",
 ]
 
 [[package]]
@@ -6290,7 +6310,7 @@ version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "014dcb9293341241dd153b35f89ea906e4170914f4a347a95e7fb07ade47cd6f"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "serde",
  "serde_bytes",
  "serde_derive",
@@ -6309,7 +6329,7 @@ source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b4
 dependencies = [
  "Inflector",
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "bs58",
  "bv",
  "serde",
@@ -6375,7 +6395,7 @@ source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b4
 dependencies = [
  "agave-fs",
  "ahash 0.8.12",
- "bincode",
+ "bincode 1.3.3",
  "blake3",
  "bv",
  "bytemuck",
@@ -6463,7 +6483,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2f56cac5e70517a2f27d05e5100b20de7182473ffd0035b23ea273307905987"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "bytemuck",
  "serde",
  "serde_derive",
@@ -6536,7 +6556,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "agave-feature-set",
- "bincode",
+ "bincode 1.3.3",
  "crossbeam-channel",
  "futures 0.3.31",
  "solana-account",
@@ -6576,7 +6596,7 @@ version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "278a1a5bad62cd9da89ac8d4b7ec444e83caa8ae96aa656dfc27684b28d49a5d"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "serde_core",
  "solana-instruction-error",
 ]
@@ -6659,7 +6679,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "agave-syscalls",
- "bincode",
+ "bincode 1.3.3",
  "qualifier_attr",
  "solana-account",
  "solana-bincode",
@@ -6854,7 +6874,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "async-trait",
- "bincode",
+ "bincode 1.3.3",
  "dashmap",
  "futures 0.3.31",
  "futures-util",
@@ -7004,7 +7024,7 @@ version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63e401ae56aed512821cc7a0adaa412ff97fecd2dff4602be7b1330d2daec0c4"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "serde",
  "serde_derive",
  "solana-account",
@@ -7021,7 +7041,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "async-trait",
- "bincode",
+ "bincode 1.3.3",
  "crossbeam-channel",
  "futures-util",
  "indexmap 2.12.0",
@@ -7058,7 +7078,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "bs58",
  "bytemuck",
  "bytes",
@@ -7304,7 +7324,7 @@ name = "solana-entry"
 version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "crossbeam-channel",
  "dlopen2",
  "log",
@@ -7383,7 +7403,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "agave-logger",
- "bincode",
+ "bincode 1.3.3",
  "clap 2.34.0",
  "crossbeam-channel",
  "log",
@@ -7415,7 +7435,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7347ab62e6d47a82e340c865133795b394feea7c2b2771d293f57691c6544c3f"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "serde",
  "serde_derive",
  "solana-account",
@@ -7477,7 +7497,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "749eccc960e85c9b33608450093d256006253e1cb436b8380e71777840a3f675"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "chrono",
  "memmap2 0.5.10",
  "serde",
@@ -7555,7 +7575,7 @@ dependencies = [
  "arc-swap",
  "arrayvec",
  "assert_matches",
- "bincode",
+ "bincode 1.3.3",
  "bv",
  "clap 2.34.0",
  "crossbeam-channel",
@@ -7653,7 +7673,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df4e8fcba01d7efa647ed20a081c234475df5e11a93acb4393cc2c9a7b99bab"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "serde",
  "serde_derive",
  "solana-define-syscall 3.0.0",
@@ -7754,7 +7774,7 @@ dependencies = [
  "agave-snapshots",
  "anyhow",
  "assert_matches",
- "bincode",
+ "bincode 1.3.3",
  "bitflags 2.10.0",
  "bytes",
  "bzip2",
@@ -7944,7 +7964,7 @@ version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85666605c9fd727f865ed381665db0a8fc29f984a030ecc1e40f43bfb2541623"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "blake3",
  "lazy_static",
  "serde",
@@ -7994,7 +8014,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "anyhow",
- "bincode",
+ "bincode 1.3.3",
  "bytes",
  "cfg-if 1.0.4",
  "dashmap",
@@ -8072,7 +8092,7 @@ version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d84c0811f3a9ee1d89050d538fcff77445f54449d2e09380a5aeeafe7425e7cc"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "bitflags 2.10.0",
  "cfg_eval",
  "serde",
@@ -8087,7 +8107,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "ahash 0.8.12",
- "bincode",
+ "bincode 1.3.3",
  "bv",
  "bytes",
  "caps",
@@ -8185,7 +8205,7 @@ name = "solana-program-binaries"
 version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "serde",
  "solana-account",
  "solana-loader-v3-interface",
@@ -8246,7 +8266,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "itertools 0.13.0",
  "log",
  "percentage",
@@ -8294,7 +8314,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "chrono-humanize",
  "crossbeam-channel",
  "log",
@@ -8437,7 +8457,7 @@ dependencies = [
  "async-std",
  "async-stream",
  "async-trait",
- "bincode",
+ "bincode 2.0.1",
  "chrono",
  "clap 4.5.53",
  "csv-async",
@@ -8555,7 +8575,7 @@ dependencies = [
  "agave-feature-set",
  "agave-snapshots",
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "bs58",
  "crossbeam-channel",
  "dashmap",
@@ -8638,7 +8658,7 @@ source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b4
 dependencies = [
  "async-trait",
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "bs58",
  "futures 0.3.31",
  "indicatif 0.18.3",
@@ -8750,7 +8770,7 @@ dependencies = [
  "arrayref",
  "assert_matches",
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "blake3",
  "bv",
  "bytemuck",
@@ -9175,7 +9195,7 @@ source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b4
 dependencies = [
  "agave-reserved-account-keys",
  "backoff",
- "bincode",
+ "bincode 1.3.3",
  "bytes",
  "bzip2",
  "enum-iterator",
@@ -9213,7 +9233,7 @@ name = "solana-storage-proto"
 version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "bs58",
  "prost 0.11.9",
  "protobuf-src",
@@ -9400,7 +9420,7 @@ name = "solana-system-program"
 version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "log",
  "serde",
  "solana-account",
@@ -9442,7 +9462,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63205e68d680bcc315337dec311b616ab32fea0a612db3b883ce4de02e0953f9"
 dependencies = [
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "lazy_static",
  "serde",
  "serde_derive",
@@ -9485,7 +9505,7 @@ dependencies = [
  "agave-feature-set",
  "agave-snapshots",
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "crossbeam-channel",
  "log",
  "serde_json",
@@ -9552,7 +9572,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "async-trait",
- "bincode",
+ "bincode 1.3.3",
  "futures-util",
  "indexmap 2.12.0",
  "indicatif 0.18.3",
@@ -9618,7 +9638,7 @@ version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64928e6af3058dcddd6da6680cbe08324b4e071ad73115738235bbaa9e9f72a5"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "serde",
  "serde_derive",
  "solana-address 1.1.0",
@@ -9640,7 +9660,7 @@ version = "1.0.0"
 dependencies = [
  "agave-logger",
  "async-trait",
- "bincode",
+ "bincode 2.0.1",
  "borsh",
  "chrono",
  "clap 4.5.53",
@@ -9691,7 +9711,7 @@ name = "solana-transaction-context"
 version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "serde",
  "solana-account",
  "solana-instruction",
@@ -9720,7 +9740,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "log",
  "rand 0.8.5",
  "solana-packet 4.0.0",
@@ -9737,7 +9757,7 @@ dependencies = [
  "Inflector",
  "agave-reserved-account-keys",
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "borsh",
  "bs58",
  "log",
@@ -9777,7 +9797,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "bs58",
  "serde",
  "serde_json",
@@ -9802,7 +9822,7 @@ dependencies = [
  "agave-feature-set",
  "agave-votor",
  "agave-xdp",
- "bincode",
+ "bincode 1.3.3",
  "bytes",
  "caps",
  "crossbeam-channel",
@@ -9964,7 +9984,7 @@ version = "4.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db6e123e16bfdd7a81d71b4c4699e0b29580b619f4cd2ef5b6aae1eb85e8979f"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "cfg_eval",
  "num-derive",
  "num-traits",
@@ -9990,7 +10010,7 @@ version = "4.0.0-alpha.0"
 source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b464e8ae3b27dfe980833423a"
 dependencies = [
  "agave-feature-set",
- "bincode",
+ "bincode 1.3.3",
  "log",
  "num-derive",
  "num-traits",
@@ -10069,7 +10089,7 @@ checksum = "9602bcb1f7af15caef92b91132ec2347e1c51a72ecdbefdaefa3eac4b8711475"
 dependencies = [
  "aes-gcm-siv",
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "bytemuck",
  "bytemuck_derive",
  "curve25519-dalek 4.1.3",
@@ -10121,7 +10141,7 @@ source = "git+https://github.com/anza-xyz/agave.git?rev=7d7973#7d79731d4b4dd68b4
 dependencies = [
  "aes-gcm-siv",
  "base64 0.22.1",
- "bincode",
+ "bincode 1.3.3",
  "bytemuck",
  "bytemuck_derive",
  "curve25519-dalek 4.1.3",
@@ -10883,7 +10903,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "911a61637386b789af998ee23f50aa30d5fd7edcec8d6d3dedae5e5815205466"
 dependencies = [
- "bincode",
+ "bincode 1.3.3",
  "bytes",
  "educe 0.4.23",
  "futures-core",
@@ -11447,6 +11467,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "unty"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
+
+[[package]]
 name = "unwrap_none"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11538,6 +11564,12 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "virtue"
+version = "0.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
 
 [[package]]
 name = "void"
@@ -12219,7 +12251,7 @@ version = "10.1.1"
 source = "git+https://github.com/KirillLykov/yellowstone-grpc.git?rev=3ef0#3ef0fdd95a19f0afbbd520e39981cacaeefac7f5"
 dependencies = [
  "anyhow",
- "bincode",
+ "bincode 1.3.3",
  "prost 0.14.1",
  "prost-types 0.14.1",
  "protobuf-src",
