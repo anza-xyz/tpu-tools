@@ -31,6 +31,7 @@ pub struct BackpressuredBroadcaster;
 #[async_trait]
 impl WorkersBroadcaster for BackpressuredBroadcaster {
     async fn send_to_workers(
+        &self,
         workers: &mut WorkersCache,
         leaders: &[SocketAddr],
         transaction_batch: TransactionBatch,
