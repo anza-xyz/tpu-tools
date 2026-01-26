@@ -7,7 +7,7 @@ use {
         ConnectionWorkersSchedulerError, SendTransactionStats,
         connection_workers_scheduler::{ConnectionWorkersSchedulerConfig, setup_endpoint},
         transaction_batch::TransactionBatch,
-        workers_cache::{WorkersCache, WorkersCacheError, shutdown_worker, spawn_worker},
+        workers_cache::{WorkersCache, WorkersCacheError, shutdown_worker},
     },
     std::{sync::Arc, time::Duration},
     tokio::time::interval,
