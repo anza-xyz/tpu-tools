@@ -308,9 +308,8 @@ async fn run_client(
             cancel,
         ));
 
-        scheduler
-            .run_with_broadcaster::<BackpressuredBroadcaster>(config)
-            .await?;
+        let broadcaster = Box::new(BackpressuredBroadcaster {});
+        scheduler.run_with_broadcaster(config, broadcaster).await?;
         Ok(())
     });
 
