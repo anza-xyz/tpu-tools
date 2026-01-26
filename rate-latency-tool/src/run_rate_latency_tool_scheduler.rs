@@ -6,7 +6,7 @@ use {
     solana_tpu_client_next::{
         connection_workers_scheduler::{setup_endpoint, ConnectionWorkersSchedulerConfig},
         transaction_batch::TransactionBatch,
-        workers_cache::{shutdown_worker, spawn_worker, WorkersCache, WorkersCacheError},
+        workers_cache::{shutdown_worker, WorkersCache, WorkersCacheError},
         ConnectionWorkersSchedulerError, SendTransactionStats,
     },
     std::{sync::Arc, time::Duration},
