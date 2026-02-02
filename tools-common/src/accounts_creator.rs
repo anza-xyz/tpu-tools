@@ -225,11 +225,9 @@ fn calculate_batch_size(
     num_created_accounts: usize,
     num_send_batch_attempts: usize,
 ) -> usize {
-    let mean_num_success = if num_send_batch_attempts == 0 {
-        std::cmp::min(num_accounts, MAX_RPC_SEND_TX_BATCH)
-    } else {
-        num_created_accounts / num_send_batch_attempts
-    };
+    let mean_num_success = num_created_accounts
+        .checked_div(num_send_batch_attempts)
+        .unwrap_or(std::cmp::min(num_accounts, MAX_RPC_SEND_TX_BATCH));
 
     std::cmp::min(mean_num_success + 1, num_accounts - num_created_accounts)
 }
