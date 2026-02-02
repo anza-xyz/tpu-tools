@@ -1,7 +1,7 @@
 use {
     crate::{
         cli::{ExecutionParams, TxAnalysisParams},
-        csv_writer::{run_csv_writer, CSVRecord},
+        csv_writer::{CSVRecord, run_csv_writer},
         error::RateLatencyToolError,
         run_rate_latency_tool_scheduler::run_rate_latency_tool_scheduler,
         yellowstone_subscriber::run_yellowstone_subscriber,
@@ -16,11 +16,11 @@ use {
     solana_signer::{EncodableKey, Signer},
     solana_time_utils::timestamp,
     solana_tpu_client_next::{
+        SendTransactionStats,
         connection_workers_scheduler::{
             BindTarget, ConnectionWorkersSchedulerConfig, Fanout, StakeIdentity,
         },
         node_address_service::LeaderTpuCacheServiceConfig,
-        SendTransactionStats,
     },
     solana_transaction::Transaction,
     std::{sync::Arc, time::Duration},

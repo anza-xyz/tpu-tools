@@ -5,10 +5,10 @@ use {
     async_trait::async_trait,
     log::{debug, warn},
     solana_tpu_client_next::{
+        ConnectionWorkersSchedulerError,
         connection_workers_scheduler::WorkersBroadcaster,
         transaction_batch::TransactionBatch,
-        workers_cache::{shutdown_worker, WorkersCache, WorkersCacheError},
-        ConnectionWorkersSchedulerError,
+        workers_cache::{WorkersCache, WorkersCacheError, shutdown_worker},
     },
     std::net::SocketAddr,
 };

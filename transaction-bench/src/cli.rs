@@ -1,5 +1,5 @@
 use {
-    clap::{crate_description, crate_name, crate_version, value_parser, Args, Parser, Subcommand},
+    clap::{Args, Parser, Subcommand, crate_description, crate_name, crate_version, value_parser},
     solana_clap_v3_utils::{
         input_parsers::parse_url_or_moniker, input_validators::normalize_to_url_if_moniker,
     },

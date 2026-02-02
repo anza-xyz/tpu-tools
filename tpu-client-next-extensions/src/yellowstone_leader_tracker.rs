@@ -13,15 +13,15 @@ use {
     thiserror::Error,
     tokio::fs,
     tokio_util::sync::CancellationToken,
-    tonic::{async_trait, Status},
+    tonic::{Status, async_trait},
     yellowstone_grpc_client::{
         ClientTlsConfig, GeyserGrpcBuilderError, GeyserGrpcClient, GeyserGrpcClientError,
         Interceptor,
     },
     yellowstone_grpc_proto::{
         geyser::{
-            subscribe_update::UpdateOneof, CommitmentLevel, SlotStatus, SubscribeRequest,
-            SubscribeRequestFilterSlots, SubscribeUpdate, SubscribeUpdateSlot,
+            CommitmentLevel, SlotStatus, SubscribeRequest, SubscribeRequestFilterSlots,
+            SubscribeUpdate, SubscribeUpdateSlot, subscribe_update::UpdateOneof,
         },
         tonic::transport::Certificate,
     },

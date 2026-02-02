@@ -4,7 +4,7 @@ use {
     solana_cli_config::ConfigInput,
     solana_keypair::Keypair,
     solana_rate_latency_tool::{
-        cli::{build_cli_parameters, ClientCliParameters, Command},
+        cli::{ClientCliParameters, Command, build_cli_parameters},
         error::RateLatencyToolError,
         run_client::run_client,
     },
