@@ -1,12 +1,12 @@
 pub use tools_common::cli::{AccountParams, LeaderTracker};
 use {
-    clap::{crate_description, crate_name, crate_version, value_parser, Args, Parser, Subcommand},
+    clap::{Args, Parser, Subcommand, crate_description, crate_name, crate_version, value_parser},
     solana_clap_v3_utils::input_parsers::parse_url,
     solana_commitment_config::CommitmentConfig,
     std::{net::SocketAddr, path::PathBuf},
     tokio::time::Duration,
     tools_common::cli::{
-        parse_and_normalize_url, parse_duration_ms, parse_duration_sec, ReadAccounts, WriteAccounts,
+        ReadAccounts, WriteAccounts, parse_and_normalize_url, parse_duration_ms, parse_duration_sec,
     },
 };
 

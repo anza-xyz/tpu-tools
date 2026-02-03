@@ -25,10 +25,10 @@ use {
     },
     yellowstone_grpc_proto::{
         geyser::{
-            subscribe_update::UpdateOneof, CommitmentLevel, SlotStatus, SubscribeRequest,
-            SubscribeRequestFilterBlocksMeta, SubscribeRequestFilterEntry,
-            SubscribeRequestFilterSlots, SubscribeRequestFilterTransactions,
-            SubscribeUpdateTransaction,
+            CommitmentLevel, SlotStatus, SubscribeRequest, SubscribeRequestFilterBlocksMeta,
+            SubscribeRequestFilterEntry, SubscribeRequestFilterSlots,
+            SubscribeRequestFilterTransactions, SubscribeUpdateTransaction,
+            subscribe_update::UpdateOneof,
         },
         tonic::transport::Certificate,
     },

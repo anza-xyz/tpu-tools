@@ -12,16 +12,16 @@ use {
     solana_signer::{EncodableKey, Signer},
     solana_streamer::nonblocking::quic::ConnectionPeerType,
     solana_tpu_client_next::{
+        ConnectionWorkersScheduler,
         connection_workers_scheduler::{
             BindTarget, ConnectionWorkersSchedulerConfig, Fanout, StakeIdentity,
         },
         node_address_service::LeaderTpuCacheServiceConfig,
-        ConnectionWorkersScheduler,
     },
     solana_transaction_bench::{
         backpressured_broadcaster::BackpressuredBroadcaster,
         cli::{
-            build_cli_parameters, ClientCliParameters, Command, ExecutionParams, TransactionParams,
+            ClientCliParameters, Command, ExecutionParams, TransactionParams, build_cli_parameters,
         },
         error::BenchClientError,
         generator::TransactionGenerator,
@@ -34,8 +34,8 @@ use {
     tokio_util::sync::CancellationToken,
     tools_common::{
         accounts_file::{
-            create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
-            AccountsFile,
+            AccountsFile, create_ephemeral_accounts, create_file_persisted_accounts,
+            read_accounts_file,
         },
         blockhash_updater::BlockhashUpdater,
         leader_updater::create_leader_updater,

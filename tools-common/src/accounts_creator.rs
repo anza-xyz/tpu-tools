@@ -2,7 +2,7 @@
 //! Using RpcClient for simplicity.
 #![allow(clippy::arithmetic_side_effects)]
 use {
-    crate::accounts_file::{write_accounts_file, AccountsFile},
+    crate::accounts_file::{AccountsFile, write_accounts_file},
     chrono::prelude::Utc,
     futures::future::join_all,
     log::*,
@@ -19,7 +19,7 @@ use {
     solana_transaction::Transaction,
     std::{path::PathBuf, sync::Arc},
     thiserror::Error,
-    tokio::time::{sleep, Duration},
+    tokio::time::{Duration, sleep},
 };
 
 /// How many transactions send concurrently.
@@ -301,7 +301,7 @@ mod tests {
     use {
         super::*,
         async_trait::async_trait,
-        rand::{rngs::StdRng, Rng, SeedableRng},
+        rand::{Rng, SeedableRng, rngs::StdRng},
         solana_keypair::Keypair,
         solana_rpc_client::{
             mock_sender::MockSender,

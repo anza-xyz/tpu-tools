@@ -7,7 +7,7 @@ use {
     },
     async_trait::async_trait,
     log::{debug, error},
-    solana_clock::{Slot, NUM_CONSECUTIVE_LEADER_SLOTS},
+    solana_clock::{NUM_CONSECUTIVE_LEADER_SLOTS, Slot},
     solana_connection_cache::connection_cache::Protocol,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_tpu_client::nonblocking::tpu_client::LeaderTpuService,
@@ -21,8 +21,8 @@ use {
     std::{
         net::SocketAddr,
         sync::{
-            atomic::{AtomicBool, Ordering},
             Arc,
+            atomic::{AtomicBool, Ordering},
         },
     },
     thiserror::Error,

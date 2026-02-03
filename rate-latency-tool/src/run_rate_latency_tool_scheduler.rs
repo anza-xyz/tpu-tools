@@ -4,10 +4,10 @@ use {
     solana_clock::Slot,
     solana_measure::measure::Measure,
     solana_tpu_client_next::{
-        connection_workers_scheduler::{setup_endpoint, ConnectionWorkersSchedulerConfig},
-        transaction_batch::TransactionBatch,
-        workers_cache::{shutdown_worker, spawn_worker, WorkersCache, WorkersCacheError},
         ConnectionWorkersSchedulerError, SendTransactionStats,
+        connection_workers_scheduler::{ConnectionWorkersSchedulerConfig, setup_endpoint},
+        transaction_batch::TransactionBatch,
+        workers_cache::{WorkersCache, WorkersCacheError, shutdown_worker, spawn_worker},
     },
     std::{sync::Arc, time::Duration},
     tokio::time::interval,
