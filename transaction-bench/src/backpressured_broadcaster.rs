@@ -8,7 +8,7 @@ use {
         ConnectionWorkersSchedulerError,
         connection_workers_scheduler::WorkersBroadcaster,
         transaction_batch::TransactionBatch,
-        workers_cache::{WorkersCache, WorkersCacheError, shutdown_worker},
+        workers_cache::{WorkersCache, WorkersCacheError},
     },
     std::net::SocketAddr,
 };
@@ -31,6 +31,7 @@ pub struct BackpressuredBroadcaster;
 #[async_trait]
 impl WorkersBroadcaster for BackpressuredBroadcaster {
     async fn send_to_workers(
+        &self,
         workers: &mut WorkersCache,
         leaders: &[SocketAddr],
         transaction_batch: TransactionBatch,
@@ -52,8 +53,7 @@ impl WorkersBroadcaster for BackpressuredBroadcaster {
                     debug!("Connection to {new_leader} was closed, worker cache shutdown");
                 }
                 Err(WorkersCacheError::ReceiverDropped) => {
-                    // Remove the worker from the cache, if the peer has disconnected.
-                    shutdown_worker(workers.pop(*new_leader).unwrap());
+                    // do nothing here, we shutdown the worker in try_send_transactions_to_address
                 }
                 Err(err) => {
                     warn!("Failed to send batch to {new_leader}, worker error: {err}");
@@ -88,8 +88,7 @@ impl WorkersBroadcaster for BackpressuredBroadcaster {
                     debug!("Connection to {new_leader} was closed, worker cache shutdown");
                 }
                 Err(WorkersCacheError::ReceiverDropped) => {
-                    // Remove the worker from the cache, if the peer has disconnected.
-                    shutdown_worker(workers.pop(*new_leader).unwrap());
+                    // do nothing here, we shutdown the worker in send_transactions_to_address
                 }
                 Err(_) => {
                     unreachable!("The only possible error is ReceiverDropped or ShutdownError.");

@@ -12,7 +12,7 @@ use {
     thiserror::Error,
     tokio::{
         select,
-        sync::mpsc::{unbounded_channel, Receiver, UnboundedReceiver},
+        sync::mpsc::{Receiver, UnboundedReceiver, unbounded_channel},
         time::interval,
     },
     tokio_util::{sync::CancellationToken, task::TaskTracker},
@@ -159,12 +159,11 @@ pub async fn run_csv_writer(
                     }
 
                     for mut record in complete_records.drain(..) {
-                        if let Some(transaction_id) = record.transaction_id {
-                            if let Some(pending) =
+                        if let Some(transaction_id) = record.transaction_id
+                            && let Some(pending) =
                                 pending_txs.lock().unwrap().remove(&transaction_id)
-                            {
-                                record.tx_status = pending.tx_status;
-                            }
+                        {
+                            record.tx_status = pending.tx_status;
                         }
 
                         if let Err(e) = writer_sender.send(record.as_csv_record()) {

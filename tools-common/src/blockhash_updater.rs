@@ -78,14 +78,14 @@ impl BlockhashUpdater {
         while !self.sender.is_closed() {
             interval.tick().await;
 
-            if let Ok(new_blockhash) = self.rpc_client.get_latest_blockhash().await {
-                if new_blockhash != self.last_blockhash {
-                    self.last_blockhash = new_blockhash;
-                    if self.sender.send(new_blockhash).is_err() {
-                        break;
-                    }
-                    blockhash_last_updated = Instant::now();
+            if let Ok(new_blockhash) = self.rpc_client.get_latest_blockhash().await
+                && new_blockhash != self.last_blockhash
+            {
+                self.last_blockhash = new_blockhash;
+                if self.sender.send(new_blockhash).is_err() {
+                    break;
                 }
+                blockhash_last_updated = Instant::now();
             }
             if blockhash_last_updated.elapsed() > self.config.stuck_interval {
                 return Err(BlockhashUpdaterError::BlockhashStuck);

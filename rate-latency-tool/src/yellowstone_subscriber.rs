@@ -206,7 +206,7 @@ pub async fn run_yellowstone_subscriber(
                                     received_subscr_timestamp,
                                 );
                             } else {
-                                debug!(
+                                trace!(
                                     "skipping txs for slot {} because we start tool between slot \
                                      updates.",
                                     tx.slot
@@ -214,7 +214,7 @@ pub async fn run_yellowstone_subscriber(
                             }
                         }
                         UpdateOneof::Entry(entry_update) => {
-                            debug!("Received entry info: {entry_update:?}");
+                            trace!("Received entry info: {entry_update:?}");
                             if let Some(recording) = recording_map.get_mut(&entry_update.slot) {
                                 recording.add_entry_update(EntryRecord {
                                     index: entry_update.index,
@@ -223,7 +223,7 @@ pub async fn run_yellowstone_subscriber(
                                 });
                             } else {
                                 // this happens because we start tool between slot updates.
-                                debug!("skipping entries for slot {}", entry_update.slot);
+                                trace!("skipping entries for slot {}", entry_update.slot);
                             }
                         }
                         UpdateOneof::Slot(grpc_slot) => {
@@ -240,7 +240,7 @@ pub async fn run_yellowstone_subscriber(
                                 }
                                 SlotStatus::SlotFirstShredReceived
                                 | SlotStatus::SlotCreatedBank => {
-                                    info!("Create recording for slot {}", grpc_slot.slot);
+                                    trace!("Create recording for slot {}", grpc_slot.slot);
                                     recording_map.entry(grpc_slot.slot).or_insert_with(|| {
                                         SlotRecording {
                                             slot: grpc_slot.slot,
@@ -250,7 +250,7 @@ pub async fn run_yellowstone_subscriber(
                                     });
                                 }
                                 SlotStatus::SlotDead => {
-                                    debug!("Removing recording for dead slot {}", grpc_slot.slot);
+                                    trace!("Removing recording for dead slot {}", grpc_slot.slot);
                                     let _ = recording_map.remove(&grpc_slot.slot);
                                 }
                                 _ => {}
@@ -261,12 +261,12 @@ pub async fn run_yellowstone_subscriber(
                             let entry_count = block_meta.entries_count;
                             let slot = block_meta.slot;
 
-                            debug!(
+                            trace!(
                                 "Received block meta for slot {slot}, \
                                  {executed_transaction_count}, {entry_count}"
                             );
                             if let Some(recording) = recording_map.get_mut(&slot) {
-                                debug!(
+                                trace!(
                                     "Received txs: {}, expected: {}",
                                     recording.txs.len(),
                                     executed_transaction_count
@@ -307,7 +307,7 @@ pub async fn run_yellowstone_subscriber(
                             }
                         }
                         _ => {
-                            info!("Received an unsupported update type, ignore it.");
+                            debug!("Received an unsupported update type, ignore it.");
                         }
                     }
                 }
@@ -392,8 +392,7 @@ impl SlotRecording {
         );
 
         self.entries.sort_by_key(|e| e.index);
-        let ticks = find_tx_ticks(self.entries.as_slice());
-        ticks
+        find_tx_ticks(self.entries.as_slice())
     }
 
     fn sort_txs(&mut self) {
@@ -473,49 +472,50 @@ fn try_build_csv_record_with_classification(
             TxType::UnclassifiedNonVote
         };
 
-        if let Some(tx) = tx.transaction {
-            if let Some(message) = tx.message {
-                let accounts = message
-                    .account_keys
-                    .iter()
-                    .map(|key_bytes| Pubkey::try_from(key_bytes.as_slice()).unwrap());
-                for account in accounts {
-                    if let Some(amm) = amms_programs.get(&account) {
-                        tx_type = TxType::PropAMM(amm.clone());
-                        break;
-                    }
-                    if target_accounts.contains(&account) {
-                        tx_type = TxType::TargetTpu;
-                        break;
-                    }
-                    if jito_tip_accounts.contains(&account) {
-                        tx_type = TxType::JitoTip;
-                        break;
-                    }
+        if let Some(tx) = tx.transaction
+            && let Some(message) = tx.message
+        {
+            let accounts = message
+                .account_keys
+                .iter()
+                .map(|key_bytes| Pubkey::try_from(key_bytes.as_slice()).unwrap());
+            for account in accounts {
+                if let Some(amm) = amms_programs.get(&account) {
+                    tx_type = TxType::PropAMM(amm.clone());
+                    break;
+                }
+                if target_accounts.contains(&account) {
+                    tx_type = TxType::TargetTpu;
+                    break;
+                }
+                if jito_tip_accounts.contains(&account) {
+                    tx_type = TxType::JitoTip;
+                    break;
                 }
             }
         }
+
         tx_type
     };
 
     let memo_log = extract_memo_line(&meta.log_messages);
-    if let Some(memo_log) = memo_log {
-        if let Some((transaction_id, sent_slot, sent_timestamp)) = parse_memo_log(memo_log) {
-            return Ok(CSVRecord {
-                signature,
-                transaction_id: Some(transaction_id),
-                sent_slot: Some(sent_slot),
-                received_slot: Some(received_slot),
-                sent_timestamp: Some(sent_timestamp),
-                received_timestamp,
-                received_subscr_timestamp,
-                index_in_block,
-                tx_status: vec![],
-                tick: None,
-                tx_type: Some(tx_type.to_string()),
-                num_transaction_in_block: None,
-            });
-        }
+    if let Some(memo_log) = memo_log
+        && let Some((transaction_id, sent_slot, sent_timestamp)) = parse_memo_log(memo_log)
+    {
+        return Ok(CSVRecord {
+            signature,
+            transaction_id: Some(transaction_id),
+            sent_slot: Some(sent_slot),
+            received_slot: Some(received_slot),
+            sent_timestamp: Some(sent_timestamp),
+            received_timestamp,
+            received_subscr_timestamp,
+            index_in_block,
+            tx_status: vec![],
+            tick: None,
+            tx_type: Some(tx_type.to_string()),
+            num_transaction_in_block: None,
+        });
     }
     // not your tx
     Ok(CSVRecord {

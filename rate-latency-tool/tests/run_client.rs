@@ -138,15 +138,15 @@ fn test_transactions_sending() {
                 // sometimes block is not ready, see issues/33462
                 assert_eq!(err, RpcBlockUpdateError::BlockStoreError);
             }
-            if let Some(block) = response.value.block {
-                if let Some(encoded_transactions) = block.transactions {
-                    for encoded_tx in encoded_transactions {
-                        let tx = encoded_tx.transaction.decode();
-                        if let Some(tx) = tx {
-                            if is_memo(tx) {
-                                num_memo_tx += 1;
-                            }
-                        }
+            if let Some(block) = response.value.block
+                && let Some(encoded_transactions) = block.transactions
+            {
+                for encoded_tx in encoded_transactions {
+                    let tx = encoded_tx.transaction.decode();
+                    if let Some(tx) = tx
+                        && is_memo(tx)
+                    {
+                        num_memo_tx += 1;
                     }
                 }
             }
