@@ -91,15 +91,16 @@ impl TransactionGenerator {
 
         let start = Instant::now();
         loop {
-            if let Some(run_duration) = self.run_duration {
-                if start.elapsed() >= run_duration {
-                    info!("Transaction generator is stopping...");
-                    while let Some(result) = futures.join_next().await {
-                        debug!("Future result {result:?}");
-                    }
-                    break;
+            if let Some(run_duration) = self.run_duration
+                && start.elapsed() >= run_duration
+            {
+                info!("Transaction generator is stopping...");
+                while let Some(result) = futures.join_next().await {
+                    debug!("Future result {result:?}");
                 }
+                break;
             }
+
             if self.transactions_sender.is_closed() {
                 return Err(TransactionGeneratorError::ReceiverDropped);
             }

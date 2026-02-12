@@ -392,8 +392,7 @@ impl SlotRecording {
         );
 
         self.entries.sort_by_key(|e| e.index);
-        let ticks = find_tx_ticks(self.entries.as_slice());
-        ticks
+        find_tx_ticks(self.entries.as_slice())
     }
 
     fn sort_txs(&mut self) {
@@ -473,49 +472,50 @@ fn try_build_csv_record_with_classification(
             TxType::UnclassifiedNonVote
         };
 
-        if let Some(tx) = tx.transaction {
-            if let Some(message) = tx.message {
-                let accounts = message
-                    .account_keys
-                    .iter()
-                    .map(|key_bytes| Pubkey::try_from(key_bytes.as_slice()).unwrap());
-                for account in accounts {
-                    if let Some(amm) = amms_programs.get(&account) {
-                        tx_type = TxType::PropAMM(amm.clone());
-                        break;
-                    }
-                    if target_accounts.contains(&account) {
-                        tx_type = TxType::TargetTpu;
-                        break;
-                    }
-                    if jito_tip_accounts.contains(&account) {
-                        tx_type = TxType::JitoTip;
-                        break;
-                    }
+        if let Some(tx) = tx.transaction
+            && let Some(message) = tx.message
+        {
+            let accounts = message
+                .account_keys
+                .iter()
+                .map(|key_bytes| Pubkey::try_from(key_bytes.as_slice()).unwrap());
+            for account in accounts {
+                if let Some(amm) = amms_programs.get(&account) {
+                    tx_type = TxType::PropAMM(amm.clone());
+                    break;
+                }
+                if target_accounts.contains(&account) {
+                    tx_type = TxType::TargetTpu;
+                    break;
+                }
+                if jito_tip_accounts.contains(&account) {
+                    tx_type = TxType::JitoTip;
+                    break;
                 }
             }
         }
+
         tx_type
     };
 
     let memo_log = extract_memo_line(&meta.log_messages);
-    if let Some(memo_log) = memo_log {
-        if let Some((transaction_id, sent_slot, sent_timestamp)) = parse_memo_log(memo_log) {
-            return Ok(CSVRecord {
-                signature,
-                transaction_id: Some(transaction_id),
-                sent_slot: Some(sent_slot),
-                received_slot: Some(received_slot),
-                sent_timestamp: Some(sent_timestamp),
-                received_timestamp,
-                received_subscr_timestamp,
-                index_in_block,
-                tx_status: vec![],
-                tick: None,
-                tx_type: Some(tx_type.to_string()),
-                num_transaction_in_block: None,
-            });
-        }
+    if let Some(memo_log) = memo_log
+        && let Some((transaction_id, sent_slot, sent_timestamp)) = parse_memo_log(memo_log)
+    {
+        return Ok(CSVRecord {
+            signature,
+            transaction_id: Some(transaction_id),
+            sent_slot: Some(sent_slot),
+            received_slot: Some(received_slot),
+            sent_timestamp: Some(sent_timestamp),
+            received_timestamp,
+            received_subscr_timestamp,
+            index_in_block,
+            tx_status: vec![],
+            tick: None,
+            tx_type: Some(tx_type.to_string()),
+            num_transaction_in_block: None,
+        });
     }
     // not your tx
     Ok(CSVRecord {

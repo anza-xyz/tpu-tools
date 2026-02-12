@@ -102,6 +102,8 @@ impl AccountsCreator {
             return Ok(());
         }
 
+        info!("Insufficient balance, requesting airdrop...");
+
         // The authority needs more SOL.
         let balance_shortage = required_balance.saturating_sub(actual_balance);
         rpc_client
