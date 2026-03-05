@@ -44,7 +44,6 @@ tonic = { workspace = true }
 tpu-client-next-extensions = { workspace = true }
 
 [dev-dependencies]
-async-trait = { workspace = true }
 rand = { workspace = true }
 solana-sha256-hasher = { workspace = true }
 
