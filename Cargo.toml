@@ -51,7 +51,7 @@ serde = "1.0.228" # must match the serde_derive version, see https://github.com/
 serde_json = "1.0.149"
 solana-clap-v3-utils = { git = "https://github.com/anza-xyz/agave.git", rev = "1088d29ee4da0f04df71cb8f286667693412e43f", features = ["agave-unstable-api"] }
 solana-cli-config = { git = "https://github.com/anza-xyz/agave.git", rev = "1088d29ee4da0f04df71cb8f286667693412e43f", features = ["agave-unstable-api"] }
-solana-clock = "3.0.0"
+solana-clock = "3.0.1"
 solana-commitment-config = "3.0.0"
 solana-compute-budget-interface = "3.0.0"
 solana-config-interface = "2.0.0"
