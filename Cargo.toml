@@ -94,7 +94,7 @@ tokio = "1.48.0"
 tokio-stream = "0.1.17"
 tokio-util = "0.7.17"
 # the same as used by yellowstone-grpc-client
-tonic = "0.14.2"
+tonic = "0.14.5"
 tools-common = { path = "tools-common" }
 tpu-client-next-extensions = { path = "tpu-client-next-extensions" }
 tracing = "0.1"
