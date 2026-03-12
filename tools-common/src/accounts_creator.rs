@@ -6,7 +6,7 @@ use {
     chrono::prelude::Utc,
     futures::future::join_all,
     log::*,
-    solana_clock::DEFAULT_MS_PER_SLOT,
+    solana_commitment_config::CommitmentConfig,
     solana_hash::Hash,
     solana_keypair::Keypair,
     solana_message::Message,
@@ -106,13 +106,13 @@ impl AccountsCreator {
 
         // The authority needs more SOL.
         let balance_shortage = required_balance.saturating_sub(actual_balance);
-        rpc_client
+        let sig = rpc_client
             .request_airdrop(&authority_pubkey, balance_shortage)
             .await?;
 
-        // TODO(klykov): Wait for two blocks before checking.
-        // Maybe it is better to check the status using the returned signature?
-        sleep(Duration::from_millis(2 * DEFAULT_MS_PER_SLOT)).await;
+        rpc_client
+            .confirm_transaction_with_commitment(&sig, CommitmentConfig::finalized())
+            .await?;
 
         let actual_balance = rpc_client.get_balance(&authority_pubkey).await?;
         info!("Balance after airdrop {actual_balance}");
