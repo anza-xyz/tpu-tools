@@ -15,13 +15,13 @@ use {
     solana_pubkey::Pubkey,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::{
-        client_error::Error as ClientError, response::transaction::Transaction,
+        client_error::Error as ClientError,
+        response::transaction::Transaction,
     },
     solana_sdk_ids::system_program,
     solana_signer::Signer,
     solana_system_interface::instruction as system_instruction,
-    solana_transaction::Transaction,
-    std::{iter::once, path::PathBuf, sync::Arc},
+    std::{path::PathBuf, sync::Arc},
     thiserror::Error,
     tokio::{
         sync::watch,
@@ -216,10 +216,17 @@ fn create_transaction_batch(
                     signers.push(new_account);
                 }
 
-                let message = Message::new(&ixs, Some(&authority.pubkey()));
-
-                let all_signers: Vec<&Keypair> = once(authority).chain(signers.iter()).collect();
-                (Transaction::new(&all_signers, message, blockhash), signers)
+                let signers_refs: Vec<&Keypair> =
+                    std::iter::once(authority).chain(signers.iter()).collect();
+                (
+                    Transaction::new_signed_with_payer(
+                        &ixs,
+                        Some(&authority.pubkey()),
+                        &signers_refs,
+                        blockhash,
+                    ),
+                    signers,
+                )
             };
 
             (txn, new_accounts)
