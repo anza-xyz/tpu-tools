@@ -26,7 +26,6 @@ solana-connection-cache = { workspace = true }
 solana-hash = { workspace = true }
 solana-instruction = { workspace = true }
 solana-keypair = { workspace = true }
-solana-message = { workspace = true }
 solana-native-token = { workspace = true }
 solana-pubkey = { workspace = true }
 solana-rpc-client = { workspace = true }
@@ -50,8 +49,6 @@ tpu-client-next-extensions = { workspace = true }
 bincode = { workspace = true }
 rand = { workspace = true }
 solana-sha256-hasher = { workspace = true }
-wincode = { workspace = true }
-bincode = { workspace = true }
 
 [lints]
 workspace = true

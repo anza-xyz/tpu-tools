@@ -11370,7 +11370,6 @@ dependencies = [
  "solana-hash 4.2.0",
  "solana-instruction",
  "solana-keypair",
- "solana-message 4.0.0",
  "solana-native-token",
  "solana-pubkey 4.1.0",
  "solana-rpc-client",
@@ -11386,7 +11385,6 @@ dependencies = [
  "tokio-util 0.7.18",
  "tonic 0.14.2",
  "tpu-client-next-extensions",
- "wincode",
 ]
 
 [[package]]
