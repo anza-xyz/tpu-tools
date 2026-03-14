@@ -174,49 +174,70 @@ fn create_transaction_batch(
     blockhash: Hash,
     current_batch_size: usize,
     balance_lamports: u64,
-) -> Vec<(Transaction, Keypair)> {
+) -> Vec<(Transaction, Vec<Keypair>)> {
     let mut authorities_iter = authorities.iter().cycle();
-    (0..current_batch_size)
-        .map(|_| {
-            let new_account = Keypair::new();
-            let authority = authorities_iter
-                .next()
-                .expect("Authorities slice should not be empty because it is cyclical.");
-            let instructions = vec![system_instruction::create_account(
-                &authority.pubkey(),
-                &new_account.pubkey(),
-                balance_lamports,
-                0,
-                &system_program::id(),
-            )];
 
-            let message = Message::new(&instructions, Some(&authority.pubkey()));
-            (
-                Transaction::new(&[authority, &new_account], message, blockhash),
-                new_account,
-            )
+    let mut ix_batch = Vec::new();
+    let mut remaining = current_batch_size;
+    while remaining > 0 {
+        let chunk = remaining.min(7);
+        ix_batch.push(chunk);
+        remaining -= chunk;
+    }
+
+    ix_batch
+        .iter()
+        .map(|ix_batch_size| {
+            let (txn, new_accounts): (Transaction, Vec<Keypair>) = {
+                let mut ixs = Vec::new();
+                let mut signers = Vec::new();
+                let authority = authorities_iter
+                    .next()
+                    .expect("Authorities slice should not be empty because it is cyclical.");
+                for _ in 0..*ix_batch_size {
+                    let new_account = Keypair::new();
+                    let instruction = system_instruction::create_account(
+                        &authority.pubkey(),
+                        &new_account.pubkey(),
+                        balance_lamports,
+                        0,
+                        &system_program::id(),
+                    );
+
+                    ixs.push(instruction);
+                    signers.push(new_account);
+                }
+
+                let message = Message::new(&ixs, Some(&authority.pubkey()));
+
+                let all_signers: Vec<&Keypair> =
+                    std::iter::once(authority).chain(signers.iter()).collect();
+                (Transaction::new(&all_signers, message, blockhash), signers)
+            };
+
+            (txn, new_accounts)
         })
         .collect()
 }
 
 async fn send_transaction_batch(
     rpc_client: &Arc<RpcClient>,
-    transaction_batch: Vec<(Transaction, Keypair)>,
+    transaction_batch: Vec<(Transaction, Vec<Keypair>)>,
 ) -> Vec<Keypair> {
     // send txs concurrently to RPC with confirmation
     let futures = transaction_batch
         .into_iter()
-        .map(|(tx, account_keypair)| async move {
+        .map(|(tx, account_keypairs)| async move {
             (
                 rpc_client.send_and_confirm_transaction(&tx).await,
-                account_keypair,
+                account_keypairs,
             )
         });
-    // check how many landed
     let results = join_all(futures).await;
     results
         .into_iter()
-        .filter_map(|(result, account_keypair)| result.ok().map(|_| account_keypair))
+        .filter_map(|(result, account_keypairs)| result.ok().map(|_| account_keypairs))
+        .flatten()
         .collect()
 }
 
@@ -253,6 +274,11 @@ async fn create_accounts(
 
     let mut num_send_batch_attempts = 0;
     let mut num_continuous_failed_attempts = 0;
+
+    let Ok(blockhash) = rpc_client.get_latest_blockhash().await else {
+        return vec![];
+    };
+
     while created_accounts.len() < num_accounts {
         let num_created_accounts = created_accounts.len();
         if num_continuous_failed_attempts >= max_continuos_failed_attempts {
@@ -270,15 +296,6 @@ async fn create_accounts(
              {num_created_accounts}, num_continuous_failed_attempts: \
              {num_continuous_failed_attempts}."
         );
-
-        let blockhash = rpc_client.get_latest_blockhash().await;
-        if let Err(error) = blockhash {
-            warn!("Failed to fetch blockhash. Error: {error}. Wait and try again.");
-            sleep(ACCOUNT_CREATION_SLEEP_INTERVAL).await;
-            num_continuous_failed_attempts += 1;
-            continue;
-        }
-        let blockhash = blockhash.unwrap();
 
         let transaction_batch =
             create_transaction_batch(authorities, blockhash, current_batch_size, balance_lamports);
