@@ -34,7 +34,7 @@ use {
 
 #[test]
 fn test_transactions_sending() {
-    solana_logger::setup_with("debug");
+    agave_logger::setup_with("debug");
 
     let mint_keypair = Keypair::new();
     let mint_pubkey = mint_keypair.pubkey();

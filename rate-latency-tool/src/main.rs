@@ -18,7 +18,7 @@ use {
 };
 
 fn main() {
-    solana_logger::setup_with_default("solana=info");
+    agave_logger::setup_with_default("solana=info");
 
     let opt = build_cli_parameters();
     let code = {
