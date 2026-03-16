@@ -4,7 +4,7 @@ use {
         input_parsers::parse_url_or_moniker, input_validators::normalize_to_url_if_moniker,
     },
     solana_commitment_config::CommitmentConfig,
-    std::{net::SocketAddr, path::PathBuf},
+    std::{net::SocketAddr, num::NonZeroUsize, path::PathBuf},
     tokio::time::Duration,
     tools_common::cli::{AccountParams, LeaderTracker, ReadAccounts, WriteAccounts},
 };
@@ -168,6 +168,23 @@ pub struct SimpleTransferTxParams {
         help = "Number of send instructions per transaction."
     )]
     pub num_send_instructions_per_tx: usize,
+
+    #[clap(
+        long,
+        value_parser = value_parser!(NonZeroUsize),
+        help = "Number of transactions per batch. Required when using --num-conflict-groups."
+    )]
+    pub tx_batch_size: Option<NonZeroUsize>,
+
+    #[clap(
+        long,
+        requires = "tx_batch_size",
+        value_parser = value_parser!(NonZeroUsize),
+        help = "Number of unique destination accounts per batch.\n\
+                When set, destinations repeat to create account conflicts.\n\
+                Lower value = more conflicts. Default: all destinations unique."
+    )]
+    pub num_conflict_groups: Option<NonZeroUsize>,
 }
 
 fn parse_duration(s: &str) -> Result<Duration, &'static str> {
@@ -257,6 +274,8 @@ mod tests {
                         lamports_to_transfer: 1000,
                         transfer_tx_cu_budget: 600,
                         num_send_instructions_per_tx: 1,
+                        tx_batch_size: None,
+                        num_conflict_groups: None,
                     },
                 },
                 account_params,
@@ -304,6 +323,8 @@ mod tests {
                         lamports_to_transfer: 513,
                         transfer_tx_cu_budget: 1000,
                         num_send_instructions_per_tx: 2,
+                        tx_batch_size: None,
+                        num_conflict_groups: None,
                     },
                 },
                 execution_params,
@@ -351,6 +372,34 @@ mod tests {
         let actual = cli.unwrap();
 
         assert_eq!(actual, expected_parameters);
+    }
+
+    #[test]
+    fn test_conflict_groups_requires_tx_batch_size() {
+        let keypair_file_name = "/home/testUser/masterKey.json";
+        let (account_args, _account_params) = get_common_account_params();
+        let (exec_args, _execution_params) = get_common_execution_params(keypair_file_name);
+
+        let mut base_args = vec!["test", "-ul", "--authority", keypair_file_name, "run"];
+        base_args.extend(account_args.iter());
+
+        // ok: both flags present
+        let mut args = base_args.clone();
+        args.extend(["--tx-batch-size", "64", "--num-conflict-groups", "4"]);
+        args.extend(exec_args.iter());
+        assert!(ClientCliParameters::try_parse_from(args).is_ok());
+
+        // err: num-conflict-groups without tx-batch-size
+        let mut args = base_args.clone();
+        args.extend(["--num-conflict-groups", "4"]);
+        args.extend(exec_args.iter());
+        assert!(ClientCliParameters::try_parse_from(args).is_err());
+
+        // err: num-conflict-groups = 0
+        let mut args = base_args.clone();
+        args.extend(["--tx-batch-size", "64", "--num-conflict-groups", "0"]);
+        args.extend(exec_args.iter());
+        assert!(ClientCliParameters::try_parse_from(args).is_err());
     }
 
     /// Check that cannot use `write` subcommand together with parameters from `TransactionParams`

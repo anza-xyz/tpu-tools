@@ -30,4 +30,7 @@ pub enum BenchClientError {
 
     #[error(transparent)]
     AccountsFileError(#[from] AccountsFileError),
+
+    #[error("Invalid CLI arguments: {0}")]
+    InvalidCliArguments(String),
 }

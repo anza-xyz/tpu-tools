@@ -118,6 +118,9 @@ impl TransactionGenerator {
                         let num_send_instructions_per_tx = transaction_params
                             .simple_transfer_tx_params
                             .num_send_instructions_per_tx;
+                        let num_conflict_groups = transaction_params
+                            .simple_transfer_tx_params
+                            .num_conflict_groups;
                         futures.spawn(async move {
                             let Ok(wired_tx_batch) = generate_transfer_transaction_batch(
                                 payers,
@@ -134,11 +137,15 @@ impl TransactionGenerator {
 
                             send_batch(wired_tx_batch, transactions_sender).await;
                         });
-                        // 2 * self.send_batch_size because for simple transfer
-                        // we form transactions as follows: p1 -> p2, p3 -> p4, etc.
-                        index_payer = index_payer.saturating_add(
-                            2 * num_send_instructions_per_tx * self.send_batch_size,
-                        ) % len_payers;
+                        let total_pairs = num_send_instructions_per_tx * send_batch_size;
+
+                        let receivers_consumed = num_conflict_groups
+                            .map(|g| g.get())
+                            .unwrap_or(total_pairs);
+
+                        // accounts_from consumes `total_pairs`, accounts_to consumes `receivers_consumed`
+                        index_payer = index_payer.saturating_add(total_pairs + receivers_consumed)
+                            % len_payers;
                     }
                 }
             }

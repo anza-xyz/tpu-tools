@@ -238,8 +238,34 @@ async fn run_client(
     )
     .await
     .unwrap_or(DEFAULT_NUM_STREAMS_PER_CONNECTION);
-    let send_batch_size = num_streams_per_connection;
+    let tx_batch_size = transaction_params
+        .simple_transfer_tx_params
+        .tx_batch_size
+        .map(|n| n.get());
+    let send_batch_size = tx_batch_size.unwrap_or(num_streams_per_connection);
     info!("Number of streams per connection is {num_streams_per_connection}.");
+    if let Some(tx_batch_size) = tx_batch_size {
+        info!("Using tx batch size override: {tx_batch_size}.");
+    }
+
+    if let Some(num_conflict_groups) = transaction_params
+        .simple_transfer_tx_params
+        .num_conflict_groups
+    {
+        let num_send_instructions_per_tx = transaction_params
+            .simple_transfer_tx_params
+            .num_send_instructions_per_tx;
+        let max_groups = num_send_instructions_per_tx.saturating_mul(send_batch_size);
+        let num_conflict_groups = num_conflict_groups.get();
+
+        if num_conflict_groups > max_groups {
+            return Err(BenchClientError::InvalidCliArguments(format!(
+                "--num-conflict-groups ({num_conflict_groups}) must be <= \
+                 num-send-instructions-per-tx ({num_send_instructions_per_tx}) * \
+                 tx-batch-size ({send_batch_size})"
+            )));
+        }
+    }
 
     let blockhash = rpc_client
         .get_latest_blockhash()

@@ -31,8 +31,9 @@ pub(crate) fn create_serialized_signed_transaction(
     bincode::serialize(&tx).expect("serialize Transaction in send_batch")
 }
 
-pub(crate) fn create_serialized_transfers<'a, I, L>(
-    payer: &mut I,
+pub(crate) fn create_serialized_transfers<'a, S, R, L>(
+    accounts_from: &mut S,
+    accounts_to: &mut R,
     lamports: &mut L,
     recent_blockhash: Hash,
     instructions: &mut Vec<Instruction>,
@@ -41,40 +42,40 @@ pub(crate) fn create_serialized_transfers<'a, I, L>(
     transaction_cu_budget: u32,
 ) -> Vec<u8>
 where
-    I: Iterator<Item = &'a Keypair>,
+    S: Iterator<Item = &'a Keypair>,
+    R: Iterator<Item = &'a Keypair>,
     L: Iterator<Item = &'a u64>,
 {
-    // set cu instruction must be the first instruction in the transaction.
     instructions.insert(
         0,
         ComputeBudgetInstruction::set_compute_unit_limit(transaction_cu_budget),
     );
 
-    // The first keypair in payers batch is both the transaction payer and the
-    // first transfer sender. This is desirable so the payers iterator management
-    // can rely on batch size to deduce how much to forward the payer index across batches.
-    let tx_payer_kp = payer.next().unwrap();
+    // First account-from is also the transaction fee payer
+    let tx_payer_kp = accounts_from.next().unwrap();
     let tx_payer = &tx_payer_kp.pubkey();
     signers.push(tx_payer_kp);
 
-    // First transfer: sender is tx_payer_kp
-    let receiver = payer.next().unwrap();
+    // First transfer: account-from = tx_payer_kp, account-to from iterator
+    let receiver = accounts_to.next().unwrap();
     instructions.push(system_instruction::transfer(
         tx_payer,
         &receiver.pubkey(),
         *lamports.next().unwrap(),
     ));
 
-    for _ in 1..num_send_instructions_per_tx {
-        let fee_payer: &Keypair = payer.next().unwrap();
-        signers.push(fee_payer);
-
-        let receiver = payer.next().unwrap();
-
+    // Additional transfers for multi-instruction transactions
+    for ((sender, receiver), amount) in accounts_from
+        .by_ref()
+        .zip(accounts_to.by_ref())
+        .zip(lamports.by_ref())
+        .take(num_send_instructions_per_tx.saturating_sub(1))
+    {
+        signers.push(sender);
         instructions.push(system_instruction::transfer(
-            &fee_payer.pubkey(),
+            &sender.pubkey(),
             &receiver.pubkey(),
-            *lamports.next().unwrap(),
+            *amount,
         ));
     }
 
