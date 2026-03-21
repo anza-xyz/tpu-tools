@@ -139,9 +139,8 @@ impl TransactionGenerator {
                         });
                         let total_pairs = num_send_instructions_per_tx * send_batch_size;
 
-                        let receivers_consumed = num_conflict_groups
-                            .map(|g| g.get())
-                            .unwrap_or(total_pairs);
+                        let receivers_consumed =
+                            num_conflict_groups.map(|g| g.get()).unwrap_or(total_pairs);
 
                         // accounts_from consumes `total_pairs`, accounts_to consumes `receivers_consumed`
                         index_payer = index_payer.saturating_add(total_pairs + receivers_consumed)

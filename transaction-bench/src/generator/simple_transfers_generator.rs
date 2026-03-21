@@ -71,7 +71,7 @@ fn build_accounts_from_to_lists<'a>(
     let len = payers.len();
 
     // Collect accounts-from: send_batch_size keypairs starting at payer_index
-    let accounts_from: Vec<&Keypair> = payers
+    let accounts_from: Vec<&'a Keypair> = payers
         .iter()
         .cycle()
         .skip(payer_index % len)
@@ -82,7 +82,7 @@ fn build_accounts_from_to_lists<'a>(
     let receiver_offset = receiver_start % len;
 
     // Collect accounts-to: send_batch_size keypairs starting after accounts-from
-    let accounts_to: Vec<&Keypair> = match num_conflict_groups {
+    let accounts_to: Vec<&'a Keypair> = match num_conflict_groups {
         None => payers
             .iter()
             .cycle()
@@ -93,11 +93,7 @@ fn build_accounts_from_to_lists<'a>(
             let pool_len = n.get();
             debug_assert!(pool_len <= total_pairs);
 
-            let pool_iter = payers
-                .iter()
-                .cycle()
-                .skip(receiver_offset)
-                .take(pool_len);
+            let pool_iter = payers.iter().cycle().skip(receiver_offset).take(pool_len);
 
             pool_iter.cycle().take(total_pairs).collect()
         }
@@ -151,8 +147,7 @@ mod tests {
     #[test]
     fn test_no_conflict_groups_all_receivers_unique() {
         let keypairs: Vec<Keypair> = (0..16).map(|_| Keypair::new()).collect();
-        let (accounts_from, accounts_to) =
-            build_accounts_from_to_lists(&keypairs, 0, 4, None);
+        let (accounts_from, accounts_to) = build_accounts_from_to_lists(&keypairs, 0, 4, None);
 
         // All 4 accounts-from are unique
         assert_eq!(accounts_from.len(), 4);
@@ -180,12 +175,8 @@ mod tests {
     #[test]
     fn test_conflict_groups_receivers_repeat() {
         let keypairs: Vec<Keypair> = (0..16).map(|_| Keypair::new()).collect();
-        let (accounts_from, accounts_to) = build_accounts_from_to_lists(
-            &keypairs,
-            0,
-            4,
-            Some(NonZeroUsize::new(2).unwrap()),
-        );
+        let (accounts_from, accounts_to) =
+            build_accounts_from_to_lists(&keypairs, 0, 4, Some(NonZeroUsize::new(2).unwrap()));
 
         // 4 accounts-from, all unique
         assert_eq!(accounts_from.len(), 4);
@@ -200,12 +191,8 @@ mod tests {
     #[test]
     fn test_conflict_groups_one_all_same_receiver() {
         let keypairs: Vec<Keypair> = (0..16).map(|_| Keypair::new()).collect();
-        let (_accounts_from, accounts_to) = build_accounts_from_to_lists(
-            &keypairs,
-            0,
-            4,
-            Some(NonZeroUsize::new(1).unwrap()),
-        );
+        let (_accounts_from, accounts_to) =
+            build_accounts_from_to_lists(&keypairs, 0, 4, Some(NonZeroUsize::new(1).unwrap()));
 
         // All 4 accounts-to are the same account
         assert_eq!(accounts_to[0].pubkey(), accounts_to[1].pubkey());

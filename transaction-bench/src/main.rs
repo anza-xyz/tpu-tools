@@ -261,8 +261,8 @@ async fn run_client(
         if num_conflict_groups > max_groups {
             return Err(BenchClientError::InvalidCliArguments(format!(
                 "--num-conflict-groups ({num_conflict_groups}) must be <= \
-                 num-send-instructions-per-tx ({num_send_instructions_per_tx}) * \
-                 tx-batch-size ({send_batch_size})"
+                 num-send-instructions-per-tx ({num_send_instructions_per_tx}) * tx-batch-size \
+                 ({send_batch_size})"
             )));
         }
     }
