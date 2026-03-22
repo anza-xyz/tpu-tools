@@ -211,6 +211,7 @@ pub async fn run_client(
                     connect: send_fanout.saturating_add(1),
                 },
                 skip_check_transaction_age: true,
+                override_initial_congestion_window: None,
             };
 
             let mut payer_iter = accounts.payers.iter().cycle();
