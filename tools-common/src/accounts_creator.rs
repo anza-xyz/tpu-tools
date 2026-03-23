@@ -300,6 +300,10 @@ async fn create_accounts(
         num_continuous_failed_attempts += 1;
         sleep(ACCOUNT_CREATION_SLEEP_INTERVAL).await;
     };
+    let (blockhash_sender, blockhash_receiver) = watch::channel(blockhash);
+    let blockhash_updater = BlockhashUpdater::new(rpc_client.clone(), blockhash_sender);
+
+    tokio::spawn(async move { blockhash_updater.run().await });
 
     let (blockhash_sender, blockhash_receiver) = watch::channel(blockhash);
     let blockhash_updater = BlockhashUpdater::new(rpc_client.clone(), blockhash_sender);
@@ -425,6 +429,7 @@ mod tests {
 
         let accounts = create_accounts(&rpc_client, &[Keypair::new()], 128, 1, 10).await;
 
+        println!("accounts: {}", accounts.len());
         assert_eq!(accounts.len(), 0);
     }
 
