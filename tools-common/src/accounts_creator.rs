@@ -2,7 +2,10 @@
 //! Using RpcClient for simplicity.
 #![allow(clippy::arithmetic_side_effects)]
 use {
-    crate::accounts_file::{AccountsFile, write_accounts_file},
+    crate::{
+        accounts_file::{AccountsFile, write_accounts_file},
+        blockhash_updater::BlockhashUpdater,
+    },
     chrono::prelude::Utc,
     futures::future::join_all,
     log::*,
@@ -19,7 +22,10 @@ use {
     solana_transaction::Transaction,
     std::{path::PathBuf, sync::Arc},
     thiserror::Error,
-    tokio::time::{Duration, sleep},
+    tokio::{
+        sync::watch,
+        time::{Duration, sleep},
+    },
 };
 
 /// How many transactions send concurrently.
@@ -278,6 +284,10 @@ async fn create_accounts(
     let Ok(blockhash) = rpc_client.get_latest_blockhash().await else {
         return vec![];
     };
+    let (blockhash_sender, blockhash_receiver) = watch::channel(blockhash);
+    let blockhash_updater = BlockhashUpdater::new(rpc_client.clone(), blockhash_sender);
+
+    tokio::spawn(async move { blockhash_updater.run().await });
 
     while created_accounts.len() < num_accounts {
         let num_created_accounts = created_accounts.len();
@@ -288,6 +298,8 @@ async fn create_accounts(
             );
             break;
         }
+
+        let blockhash = *blockhash_receiver.borrow();
 
         let current_batch_size =
             calculate_batch_size(num_accounts, num_created_accounts, num_send_batch_attempts);
@@ -396,6 +408,7 @@ mod tests {
 
         let accounts = create_accounts(&rpc_client, &[Keypair::new()], 128, 1, 10).await;
 
+        println!("accounts: {}", accounts.len());
         assert_eq!(accounts.len(), 0);
     }
 
