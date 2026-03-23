@@ -318,6 +318,7 @@ async fn run_client(
                 connect: send_fanout.saturating_add(1),
             },
             skip_check_transaction_age: false,
+            override_initial_congestion_window: None,
         };
 
         let (_, update_identity_receiver) = watch::channel(None);

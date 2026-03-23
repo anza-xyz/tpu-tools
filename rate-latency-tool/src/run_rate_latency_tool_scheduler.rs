@@ -27,6 +27,7 @@ pub async fn run_rate_latency_tool_scheduler<F, S>(
         worker_channel_size,
         max_reconnect_attempts,
         leaders_fanout,
+        override_initial_congestion_window,
     }: ConnectionWorkersSchedulerConfig,
     stats: Arc<SendTransactionStats>,
     cancel: CancellationToken,
@@ -41,7 +42,7 @@ where
         worker_channel_size == 1,
         "Worker channel size must be 1 because otherwise we will wait when the channel has space."
     );
-    let endpoint = setup_endpoint(bind, stake_identity)?;
+    let endpoint = setup_endpoint(bind, stake_identity, override_initial_congestion_window)?;
 
     debug!("Client endpoint bind address: {:?}", endpoint.local_addr());
     let mut workers = WorkersCache::new(num_connections, cancel.clone());
