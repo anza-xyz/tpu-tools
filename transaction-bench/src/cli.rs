@@ -4,6 +4,7 @@ use {
         input_parsers::parse_url_or_moniker, input_validators::normalize_to_url_if_moniker,
     },
     solana_commitment_config::CommitmentConfig,
+    solana_pubkey::Pubkey,
     std::{net::SocketAddr, num::NonZeroUsize, path::PathBuf},
     tokio::time::Duration,
     tools_common::cli::{AccountParams, LeaderTracker, ReadAccounts, WriteAccounts},
@@ -147,6 +148,26 @@ pub struct TransactionParams {
     //TODO(klykov): memo
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstructionPaddingConfig {
+    pub program_id: Pubkey,
+    pub data_size: u32,
+}
+
+impl TransactionParams {
+    pub fn instruction_padding_config(&self) -> Option<InstructionPaddingConfig> {
+        self.simple_transfer_tx_params
+            .instruction_padding_data_size
+            .map(|data_size| InstructionPaddingConfig {
+                program_id: self
+                    .simple_transfer_tx_params
+                    .instruction_padding_program_id
+                    .unwrap_or(spl_instruction_padding_interface::ID),
+                data_size,
+            })
+    }
+}
+
 #[derive(Args, Clone, Debug, PartialEq, Eq)]
 #[clap(rename_all = "kebab-case")]
 pub struct SimpleTransferTxParams {
@@ -168,6 +189,21 @@ pub struct SimpleTransferTxParams {
         help = "Number of send instructions per transaction."
     )]
     pub num_send_instructions_per_tx: usize,
+
+    #[clap(
+        long,
+        help = "If set, wraps all transfer instructions in the instruction padding program, with \
+                the given amount of padding bytes in instruction data."
+    )]
+    pub instruction_padding_data_size: Option<u32>,
+
+    #[clap(
+        long,
+        requires = "instruction_padding_data_size",
+        help = "Optionally specify the instruction padding program id. Defaults to the SPL \
+                instruction padding program."
+    )]
+    pub instruction_padding_program_id: Option<Pubkey>,
 
     #[clap(
         long,
@@ -274,6 +310,8 @@ mod tests {
                         lamports_to_transfer: 1000,
                         transfer_tx_cu_budget: 600,
                         num_send_instructions_per_tx: 1,
+                        instruction_padding_data_size: None,
+                        instruction_padding_program_id: None,
                         tx_batch_size: None,
                         num_conflict_groups: None,
                     },
@@ -323,6 +361,8 @@ mod tests {
                         lamports_to_transfer: 513,
                         transfer_tx_cu_budget: 1000,
                         num_send_instructions_per_tx: 2,
+                        instruction_padding_data_size: None,
+                        instruction_padding_program_id: None,
                         tx_batch_size: None,
                         num_conflict_groups: None,
                     },
@@ -337,6 +377,26 @@ mod tests {
         let actual = cli.unwrap();
 
         assert_eq!(actual, expected_parameters);
+    }
+
+    #[test]
+    fn test_instruction_padding_config_defaults_program_id() {
+        let params = TransactionParams {
+            simple_transfer_tx_params: SimpleTransferTxParams {
+                lamports_to_transfer: 513,
+                transfer_tx_cu_budget: 600,
+                num_send_instructions_per_tx: 1,
+                instruction_padding_data_size: Some(128),
+                instruction_padding_program_id: None,
+                tx_batch_size: None,
+                num_conflict_groups: None,
+            },
+        };
+
+        let padding_config = params.instruction_padding_config().unwrap();
+
+        assert_eq!(padding_config.program_id, spl_instruction_padding_interface::ID);
+        assert_eq!(padding_config.data_size, 128);
     }
 
     #[test]

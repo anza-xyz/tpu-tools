@@ -267,6 +267,22 @@ async fn run_client(
         }
     }
 
+    if let Some(instruction_padding_config) = transaction_params.instruction_padding_config() {
+        info!(
+            "Checking for existence of instruction padding program: {}",
+            instruction_padding_config.program_id
+        );
+        rpc_client
+            .get_account(&instruction_padding_config.program_id)
+            .await
+            .map_err(|err| {
+                BenchClientError::InvalidCliArguments(format!(
+                    "instruction padding program {} is not available: {err}",
+                    instruction_padding_config.program_id
+                ))
+            })?;
+    }
+
     let blockhash = rpc_client
         .get_latest_blockhash()
         .await
