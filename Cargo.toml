@@ -83,7 +83,7 @@ solana-test-validator = { version = "4.0.0-beta.3", features = ["agave-unstable-
 solana-time-utils = "3.0.0"
 solana-tpu-client = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
 solana-tpu-client-next = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
-solana-transaction = "3.1.0"
+solana-transaction = "4.0.0"
 solana-transaction-status = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
 spl-memo-interface = "2.0.0"
 thiserror = "2.0.18"
