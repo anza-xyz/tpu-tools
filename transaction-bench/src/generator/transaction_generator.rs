@@ -20,6 +20,7 @@ use {
 
 const COMPUTE_BUDGET_INSTRUCTION_CU_COST: u32 = 150;
 const SIMPLE_TRANSFER_INSTRUCTION_CU_COST: u32 = 150;
+const PADDED_TRANSFER_INSTRUCTION_CU_COST: u32 = 3_000;
 
 #[derive(Error, Debug)]
 pub enum TransactionGeneratorError {
@@ -74,11 +75,17 @@ impl TransactionGenerator {
         let &SimpleTransferTxParams {
             num_send_instructions_per_tx,
             transfer_tx_cu_budget,
+            instruction_padding_data_size,
             ..
         } = &self.transaction_params.simple_transfer_tx_params;
 
+        let per_instruction_cu_cost = if instruction_padding_data_size.is_some() {
+            PADDED_TRANSFER_INSTRUCTION_CU_COST
+        } else {
+            SIMPLE_TRANSFER_INSTRUCTION_CU_COST
+        };
         let transfer_tx_min_cu_budget = COMPUTE_BUDGET_INSTRUCTION_CU_COST
-            + SIMPLE_TRANSFER_INSTRUCTION_CU_COST * num_send_instructions_per_tx as u32;
+            + per_instruction_cu_cost * num_send_instructions_per_tx as u32;
 
         if transfer_tx_cu_budget < transfer_tx_min_cu_budget {
             error!(

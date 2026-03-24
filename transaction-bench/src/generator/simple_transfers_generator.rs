@@ -1,6 +1,7 @@
 use {
     crate::{
-        cli::SimpleTransferTxParams, generator::transaction_builder::create_serialized_transfers,
+        cli::{InstructionPaddingConfig, SimpleTransferTxParams},
+        generator::transaction_builder::create_serialized_transfers,
     },
     log::debug,
     rand::{seq::IteratorRandom, thread_rng},
@@ -21,6 +22,8 @@ pub(crate) fn generate_transfer_transaction_batch(
         lamports_to_transfer,
         transfer_tx_cu_budget,
         num_send_instructions_per_tx,
+        instruction_padding_data_size,
+        instruction_padding_program_id,
         num_conflict_groups,
         ..
     }: SimpleTransferTxParams,
@@ -28,6 +31,12 @@ pub(crate) fn generate_transfer_transaction_batch(
 ) -> JoinHandle<Vec<Vec<u8>>> {
     spawn_blocking_transaction_batch_generation("generate transfer transaction batch", move || {
         let mut txs: Vec<Vec<u8>> = Vec::with_capacity(send_batch_size);
+        let instruction_padding_config =
+            instruction_padding_data_size.map(|data_size| InstructionPaddingConfig {
+                program_id: instruction_padding_program_id
+                    .unwrap_or(spl_instruction_padding_interface::ID),
+                data_size,
+            });
 
         let total_pairs = num_send_instructions_per_tx * send_batch_size;
 
@@ -51,6 +60,7 @@ pub(crate) fn generate_transfer_transaction_batch(
                 &mut signers,
                 num_send_instructions_per_tx,
                 transfer_tx_cu_budget,
+                instruction_padding_config.as_ref(),
             );
             txs.push(tx);
             instructions.clear();
