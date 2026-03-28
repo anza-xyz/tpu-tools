@@ -28,7 +28,7 @@ pub(crate) fn create_serialized_signed_transaction(
         recent_blockhash,
     );
 
-    bincode::serialize(&tx).expect("serialize Transaction in send_batch")
+    wincode::serialize(&tx).expect("serialize Transaction in send_batch")
 }
 
 pub(crate) fn create_serialized_transfers<'a, S, R, L>(
@@ -82,5 +82,5 @@ where
     let tx =
         Transaction::new_signed_with_payer(instructions, Some(tx_payer), signers, recent_blockhash);
 
-    bincode::serialize(&tx).expect("serialize Transaction in send_batch")
+    wincode::serialize(&tx).expect("serialize Transaction in send_batch")
 }

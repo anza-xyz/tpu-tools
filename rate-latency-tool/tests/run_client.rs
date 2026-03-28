@@ -20,7 +20,7 @@ use {
     },
     solana_signer::Signer,
     solana_test_validator::TestValidatorGenesis,
-    solana_transaction::versioned::VersionedTransaction,
+    solana_transaction_3::versioned::VersionedTransaction,
     spl_memo_interface::v3::id as spl_memo_id,
     std::{
         net::{IpAddr, Ipv4Addr, SocketAddr},
