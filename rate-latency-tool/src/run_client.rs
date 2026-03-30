@@ -318,5 +318,5 @@ fn create_memo_transaction(
         &[&payer],
         blockhash,
     );
-    (tx.signatures[0], bincode::serialize(&tx).unwrap())
+    (tx.signatures[0], wincode::serialize(&tx).unwrap())
 }
