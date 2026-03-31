@@ -70,11 +70,8 @@ where
 
     // First transfer: account-from = tx_payer_kp, account-to from iterator
     let receiver = accounts_to.next().unwrap();
-    let transfer_instruction = system_instruction::transfer(
-        tx_payer,
-        &receiver.pubkey(),
-        *lamports.next().unwrap(),
-    );
+    let transfer_instruction =
+        system_instruction::transfer(tx_payer, &receiver.pubkey(), *lamports.next().unwrap());
     instructions.push(maybe_wrap_instruction(
         transfer_instruction,
         instruction_padding_config,
@@ -88,11 +85,8 @@ where
         .take(num_send_instructions_per_tx.saturating_sub(1))
     {
         signers.push(sender);
-        let transfer_instruction = system_instruction::transfer(
-            &sender.pubkey(),
-            &receiver.pubkey(),
-            *amount,
-        );
+        let transfer_instruction =
+            system_instruction::transfer(&sender.pubkey(), &receiver.pubkey(), *amount);
         instructions.push(maybe_wrap_instruction(
             transfer_instruction,
             instruction_padding_config,
@@ -123,10 +117,7 @@ fn maybe_wrap_instruction(
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        solana_pubkey::Pubkey,
-    };
+    use {super::*, solana_pubkey::Pubkey};
 
     #[test]
     fn test_maybe_wrap_instruction_keeps_transfer_when_disabled() {

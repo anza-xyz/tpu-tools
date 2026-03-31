@@ -1,8 +1,5 @@
 use {
-    crate::{
-        cli::TransactionParams,
-        generator::transaction_builder::create_serialized_transfers,
-    },
+    crate::{cli::TransactionParams, generator::transaction_builder::create_serialized_transfers},
     log::debug,
     rand::{seq::IteratorRandom, thread_rng},
     solana_hash::Hash,

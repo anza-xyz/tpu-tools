@@ -95,7 +95,7 @@ impl TransactionGenerator {
             error!(
                 "Insufficient CU budget for transfer transaction: set to {transfer_tx_cu_budget}, \
                  need at least {transfer_tx_min_cu_budget}.\nSet cli argument \
-                 --transfer_tx_cu_budget to {transfer_tx_min_cu_budget}",
+                 --transfer-tx-cu-budget to {transfer_tx_min_cu_budget}",
             );
             return Err(TransactionGeneratorError::GenerateTxBatchFailure);
         }

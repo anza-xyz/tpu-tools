@@ -420,7 +420,10 @@ mod tests {
 
         let padding_config = params.instruction_padding_config().unwrap();
 
-        assert_eq!(padding_config.program_id, spl_instruction_padding_interface::ID);
+        assert_eq!(
+            padding_config.program_id,
+            spl_instruction_padding_interface::ID
+        );
         assert_eq!(padding_config.data_size, 128);
         assert_eq!(padding_config.loaded_accounts_data_size_limit, 58 * 1024);
     }
