@@ -75,11 +75,15 @@ impl TransactionGenerator {
         let &SimpleTransferTxParams {
             num_send_instructions_per_tx,
             transfer_tx_cu_budget,
-            instruction_padding_data_size,
             ..
         } = &self.transaction_params.simple_transfer_tx_params;
 
-        let per_instruction_cu_cost = if instruction_padding_data_size.is_some() {
+        let per_instruction_cu_cost = if self
+            .transaction_params
+            .padding_params
+            .instruction_padding_data_size
+            .is_some()
+        {
             PADDED_TRANSFER_INSTRUCTION_CU_COST
         } else {
             SIMPLE_TRANSFER_INSTRUCTION_CU_COST
@@ -133,7 +137,7 @@ impl TransactionGenerator {
                                 payers,
                                 index_payer,
                                 blockhash,
-                                transaction_params.simple_transfer_tx_params,
+                                transaction_params,
                                 send_batch_size,
                             )
                             .await

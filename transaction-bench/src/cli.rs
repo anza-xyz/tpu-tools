@@ -145,25 +145,59 @@ pub struct ExecutionParams {
 pub struct TransactionParams {
     #[clap(flatten)]
     pub simple_transfer_tx_params: SimpleTransferTxParams,
+
+    #[clap(flatten)]
+    pub padding_params: InstructionPaddingParams,
     //TODO(klykov): memo
+}
+
+#[derive(Args, Clone, Debug, PartialEq, Eq)]
+#[clap(rename_all = "kebab-case")]
+pub struct InstructionPaddingParams {
+    #[clap(
+        long,
+        help = "If set, wraps all transfer instructions in the instruction padding program, with \
+                the given amount of padding bytes in instruction data."
+    )]
+    pub instruction_padding_data_size: Option<u32>,
+
+    #[clap(
+        long,
+        requires = "instruction_padding_data_size",
+        help = "Optionally specify the instruction padding program id. Defaults to the SPL \
+                instruction padding program."
+    )]
+    pub instruction_padding_program_id: Option<Pubkey>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InstructionPaddingConfig {
     pub program_id: Pubkey,
     pub data_size: u32,
+    pub loaded_accounts_data_size_limit: u32,
+}
+
+// In case of plain transfer transaction, set loaded account data size to 30 KiB.
+// It is large enough yet smaller than 32 KiB page size, so it would cost 0 extra CU.
+const TRANSFER_TRANSACTION_LOADED_ACCOUNTS_DATA_SIZE: u32 = 30 * 1024;
+// In case of padding program usage, we need to take into account program size too.
+const PADDING_PROGRAM_ACCOUNT_DATA_SIZE: u32 = 28 * 1024;
+
+fn get_padded_transaction_loaded_accounts_data_size() -> u32 {
+    TRANSFER_TRANSACTION_LOADED_ACCOUNTS_DATA_SIZE + PADDING_PROGRAM_ACCOUNT_DATA_SIZE
 }
 
 impl TransactionParams {
     pub fn instruction_padding_config(&self) -> Option<InstructionPaddingConfig> {
-        self.simple_transfer_tx_params
+        self.padding_params
             .instruction_padding_data_size
             .map(|data_size| InstructionPaddingConfig {
                 program_id: self
-                    .simple_transfer_tx_params
+                    .padding_params
                     .instruction_padding_program_id
                     .unwrap_or(spl_instruction_padding_interface::ID),
                 data_size,
+                loaded_accounts_data_size_limit: get_padded_transaction_loaded_accounts_data_size(),
             })
     }
 }
@@ -189,21 +223,6 @@ pub struct SimpleTransferTxParams {
         help = "Number of send instructions per transaction."
     )]
     pub num_send_instructions_per_tx: usize,
-
-    #[clap(
-        long,
-        help = "If set, wraps all transfer instructions in the instruction padding program, with \
-                the given amount of padding bytes in instruction data."
-    )]
-    pub instruction_padding_data_size: Option<u32>,
-
-    #[clap(
-        long,
-        requires = "instruction_padding_data_size",
-        help = "Optionally specify the instruction padding program id. Defaults to the SPL \
-                instruction padding program."
-    )]
-    pub instruction_padding_program_id: Option<Pubkey>,
 
     #[clap(
         long,
@@ -310,10 +329,12 @@ mod tests {
                         lamports_to_transfer: 1000,
                         transfer_tx_cu_budget: 600,
                         num_send_instructions_per_tx: 1,
-                        instruction_padding_data_size: None,
-                        instruction_padding_program_id: None,
                         tx_batch_size: None,
                         num_conflict_groups: None,
+                    },
+                    padding_params: InstructionPaddingParams {
+                        instruction_padding_data_size: None,
+                        instruction_padding_program_id: None,
                     },
                 },
                 account_params,
@@ -361,10 +382,12 @@ mod tests {
                         lamports_to_transfer: 513,
                         transfer_tx_cu_budget: 1000,
                         num_send_instructions_per_tx: 2,
-                        instruction_padding_data_size: None,
-                        instruction_padding_program_id: None,
                         tx_batch_size: None,
                         num_conflict_groups: None,
+                    },
+                    padding_params: InstructionPaddingParams {
+                        instruction_padding_data_size: None,
+                        instruction_padding_program_id: None,
                     },
                 },
                 execution_params,
@@ -386,10 +409,12 @@ mod tests {
                 lamports_to_transfer: 513,
                 transfer_tx_cu_budget: 600,
                 num_send_instructions_per_tx: 1,
-                instruction_padding_data_size: Some(128),
-                instruction_padding_program_id: None,
                 tx_batch_size: None,
                 num_conflict_groups: None,
+            },
+            padding_params: InstructionPaddingParams {
+                instruction_padding_data_size: Some(128),
+                instruction_padding_program_id: None,
             },
         };
 
@@ -397,6 +422,7 @@ mod tests {
 
         assert_eq!(padding_config.program_id, spl_instruction_padding_interface::ID);
         assert_eq!(padding_config.data_size, 128);
+        assert_eq!(padding_config.loaded_accounts_data_size_limit, 58 * 1024);
     }
 
     #[test]

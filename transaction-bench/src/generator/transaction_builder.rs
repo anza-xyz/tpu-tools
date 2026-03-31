@@ -49,6 +49,15 @@ where
     R: Iterator<Item = &'a Keypair>,
     L: Iterator<Item = &'a u64>,
 {
+    if let Some(padding_config) = instruction_padding_config {
+        instructions.insert(
+            0,
+            ComputeBudgetInstruction::set_loaded_accounts_data_size_limit(
+                padding_config.loaded_accounts_data_size_limit,
+            ),
+        );
+    }
+
     instructions.insert(
         0,
         ComputeBudgetInstruction::set_compute_unit_limit(transaction_cu_budget),
@@ -139,6 +148,7 @@ mod tests {
         let padding_config = InstructionPaddingConfig {
             program_id: padding_program_id,
             data_size: 64,
+            loaded_accounts_data_size_limit: 58 * 1024,
         };
 
         let instruction = maybe_wrap_instruction(transfer_instruction, Some(&padding_config));

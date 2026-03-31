@@ -1,6 +1,6 @@
 use {
     crate::{
-        cli::{InstructionPaddingConfig, SimpleTransferTxParams},
+        cli::TransactionParams,
         generator::transaction_builder::create_serialized_transfers,
     },
     log::debug,
@@ -18,25 +18,24 @@ pub(crate) fn generate_transfer_transaction_batch(
     payers: Arc<Vec<Keypair>>,
     payer_index: usize,
     blockhash: Hash,
-    SimpleTransferTxParams {
-        lamports_to_transfer,
-        transfer_tx_cu_budget,
-        num_send_instructions_per_tx,
-        instruction_padding_data_size,
-        instruction_padding_program_id,
-        num_conflict_groups,
-        ..
-    }: SimpleTransferTxParams,
+    TransactionParams {
+        simple_transfer_tx_params,
+        padding_params,
+    }: TransactionParams,
     send_batch_size: usize,
 ) -> JoinHandle<Vec<Vec<u8>>> {
     spawn_blocking_transaction_batch_generation("generate transfer transaction batch", move || {
         let mut txs: Vec<Vec<u8>> = Vec::with_capacity(send_batch_size);
-        let instruction_padding_config =
-            instruction_padding_data_size.map(|data_size| InstructionPaddingConfig {
-                program_id: instruction_padding_program_id
-                    .unwrap_or(spl_instruction_padding_interface::ID),
-                data_size,
-            });
+        let instruction_padding_config = TransactionParams {
+            simple_transfer_tx_params: simple_transfer_tx_params.clone(),
+            padding_params: padding_params.clone(),
+        }
+        .instruction_padding_config();
+
+        let lamports_to_transfer = simple_transfer_tx_params.lamports_to_transfer;
+        let transfer_tx_cu_budget = simple_transfer_tx_params.transfer_tx_cu_budget;
+        let num_send_instructions_per_tx = simple_transfer_tx_params.num_send_instructions_per_tx;
+        let num_conflict_groups = simple_transfer_tx_params.num_conflict_groups;
 
         let total_pairs = num_send_instructions_per_tx * send_batch_size;
 
