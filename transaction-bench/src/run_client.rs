@@ -94,14 +94,29 @@ async fn compute_num_streams(
     Ok(compute_max_allowed_uni_streams(client_type, total_stake))
 }
 
-async fn join_service<Error>(handle: JoinHandle<Result<(), Error>>, task_name: &str)
+async fn join_service<Error>(
+    handle: JoinHandle<Result<(), Error>>,
+    task_name: &str,
+) -> Result<(), BenchClientError>
 where
-    Error: Debug,
+    Error: Debug + Into<BenchClientError>,
 {
     match handle.await {
-        Ok(Ok(_)) => info!("Task {task_name} completed successfully"),
-        Ok(Err(e)) => error!("Task failed with error: {e:?}"),
-        Err(e) => error!("Task was cancelled or panicked: {e:?}"),
+        Ok(Ok(_)) => {
+            info!("Task {task_name} completed successfully");
+            Ok(())
+        }
+        Ok(Err(e)) => {
+            error!("Task failed with error: {e:?}");
+            Err(e.into())
+        }
+        Err(e) => {
+            error!("Task was cancelled or panicked: {e:?}");
+            Err(BenchClientError::TaskJoinFailure {
+                task_name: task_name.to_string(),
+                reason: e.to_string(),
+            })
+        }
     }
 }
 
@@ -240,9 +255,9 @@ pub async fn run_client(
         Ok(())
     });
 
-    join_service(transaction_generator_task_handle, "TransactionGenerator").await;
-    join_service(blockhash_task_handle, "BlockhashUpdater").await;
-    join_service::<BenchClientError>(scheduler_handle, "Scheduler").await;
+    join_service(transaction_generator_task_handle, "TransactionGenerator").await?;
+    join_service(blockhash_task_handle, "BlockhashUpdater").await?;
+    join_service(scheduler_handle, "Scheduler").await?;
     Ok(())
 }
 
