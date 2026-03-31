@@ -32,7 +32,7 @@ agave-logger = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
 async-std = "1.12.0"
 async-stream = "0.3.6"
 async-trait = "0.1.89"
-chrono = { version = "0.4.42", default-features = false }
+chrono = { version = "0.4.44", default-features = false }
 clap = { package = "clap", version = "4.5.41" }
 crossbeam-channel = "0.5.15"
 csv-async = "1.2"
