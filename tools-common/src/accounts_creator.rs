@@ -20,7 +20,7 @@ use {
     solana_signer::Signer,
     solana_system_interface::instruction as system_instruction,
     solana_transaction::Transaction,
-    std::{path::PathBuf, sync::Arc},
+    std::{iter::once, path::PathBuf, sync::Arc},
     thiserror::Error,
     tokio::{
         sync::watch,
@@ -216,8 +216,7 @@ fn create_transaction_batch(
 
                 let message = Message::new(&ixs, Some(&authority.pubkey()));
 
-                let all_signers: Vec<&Keypair> =
-                    std::iter::once(authority).chain(signers.iter()).collect();
+                let all_signers: Vec<&Keypair> = once(authority).chain(signers.iter()).collect();
                 (Transaction::new(&all_signers, message, blockhash), signers)
             };
 
@@ -281,9 +280,17 @@ async fn create_accounts(
     let mut num_send_batch_attempts = 0;
     let mut num_continuous_failed_attempts = 0;
 
-    let Ok(blockhash) = rpc_client.get_latest_blockhash().await else {
-        return vec![];
+    let blockhash = loop {
+        if num_continuous_failed_attempts >= max_continuos_failed_attempts {
+            return vec![];
+        }
+
+        if let Ok(bh) = rpc_client.get_latest_blockhash().await {
+            break bh;
+        }
+        num_continuous_failed_attempts += 1;
     };
+
     let (blockhash_sender, blockhash_receiver) = watch::channel(blockhash);
     let blockhash_updater = BlockhashUpdater::new(rpc_client.clone(), blockhash_sender);
 
@@ -408,7 +415,6 @@ mod tests {
 
         let accounts = create_accounts(&rpc_client, &[Keypair::new()], 128, 1, 10).await;
 
-        println!("accounts: {}", accounts.len());
         assert_eq!(accounts.len(), 0);
     }
 
