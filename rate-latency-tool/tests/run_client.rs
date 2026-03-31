@@ -34,7 +34,7 @@ use {
 
 #[test]
 fn test_transactions_sending() {
-    solana_logger::setup_with("debug");
+    agave_logger::setup_with("debug");
 
     let mint_keypair = Keypair::new();
     let mint_pubkey = mint_keypair.pubkey();
@@ -70,15 +70,30 @@ fn test_transactions_sending() {
         .build()
         .expect("Failed to create Tokio runtime");
 
+    let (mut block_subscribe_client, receiver) = PubsubClient::block_subscribe(
+        test_validator.rpc_pubsub_url(),
+        RpcBlockSubscribeFilter::All,
+        Some(RpcBlockSubscribeConfig {
+            commitment: Some(CommitmentConfig::confirmed()),
+            encoding: None,
+            transaction_details: None,
+            show_rewards: None,
+            max_supported_transaction_version: None,
+        }),
+    )
+    .unwrap();
+
     let cancel = CancellationToken::new();
     let handle = rt.spawn(async {
         let funding_key = Keypair::new();
+        let funding_pubkey = funding_key.pubkey();
         // fund the payer account
         let latest_blockhash = get_latest_blockhash(rpc_client.as_ref()).await;
         let _ = rpc_client
-            .request_airdrop_with_blockhash(&funding_key.pubkey(), 100_000_000, &latest_blockhash)
+            .request_airdrop_with_blockhash(&funding_pubkey, 100_000_000, &latest_blockhash)
             .await
             .expect("Airdrop request should not fail.");
+        wait_for_balance(rpc_client.as_ref(), &funding_pubkey, 100_000_000).await;
         let account_params = AccountParams {
             num_payers: 16,
             payer_account_balance: 1000,
@@ -118,18 +133,9 @@ fn test_transactions_sending() {
         .await
     });
 
-    let (mut block_subscribe_client, receiver) = PubsubClient::block_subscribe(
-        test_validator.rpc_pubsub_url(),
-        RpcBlockSubscribeFilter::All,
-        Some(RpcBlockSubscribeConfig {
-            commitment: Some(CommitmentConfig::confirmed()),
-            encoding: None,
-            transaction_details: None,
-            show_rewards: None,
-            max_supported_transaction_version: None,
-        }),
-    )
-    .unwrap();
+    rt.block_on(handle)
+        .expect("Should not fail joining client task.")
+        .expect("Should not fail running client.");
 
     let mut num_memo_tx = 0;
     for _ in 0..10 {
@@ -156,12 +162,8 @@ fn test_transactions_sending() {
 
     assert_eq!(
         num_memo_tx, 50,
-        "Expected to receive 50 but got {num_memo_tx}"
+        "Expected to receive 50 memo txs but got {num_memo_tx}"
     );
-
-    let _ = rt
-        .block_on(handle)
-        .expect("Should not fail running client.");
     // If we don't drop the test_validator, the blocking web socket service
     // won't return, and the `block_subscribe_client` won't shut down
     drop(test_validator);
@@ -178,6 +180,18 @@ async fn get_latest_blockhash(client: &RpcClient) -> Hash {
             }
         };
     }
+}
+
+async fn wait_for_balance(client: &RpcClient, pubkey: &solana_pubkey::Pubkey, target: u64) {
+    for _ in 0..30 {
+        if let Ok(balance) = client.get_balance(pubkey).await
+            && balance >= target
+        {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    panic!("Airdrop balance did not reach target {target} for {pubkey}");
 }
 
 fn is_memo(tx: VersionedTransaction) -> bool {

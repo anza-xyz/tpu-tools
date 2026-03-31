@@ -16,13 +16,11 @@ leader_tracker = [
     "futures-util",
     "solana-epoch-schedule",
     "solana-pubsub-client",
-    "solana-quic-definitions",
 ]
 
 [dependencies]
+agave-logger = { workspace = true }
 async-std = { workspace = true }
-async-stream = { workspace = true }
-async-trait = { workspace = true }
 bincode = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "cargo"] }
@@ -37,15 +35,12 @@ solana-cli-config = { workspace = true }
 solana-clock = { workspace = true }
 solana-commitment-config = { workspace = true }
 solana-compute-budget-interface = { workspace = true }
-solana-connection-cache = { workspace = true }
 solana-epoch-schedule = { workspace = true, optional = true }
 solana-hash = { workspace = true }
 solana-instruction = { workspace = true }
 solana-keypair = { workspace = true }
-solana-logger = { workspace = true }
 solana-measure = { workspace = true }
 solana-message = { workspace = true }
-solana-native-token = { workspace = true }
 solana-pubkey = { workspace = true }
 solana-pubsub-client = { workspace = true, optional = true }
 solana-quic-definitions = { workspace = true, optional = true }
@@ -74,6 +69,7 @@ rand = { workspace = true }
 solana-epoch-info = { workspace = true }
 solana-faucet = { workspace = true, features = ["dev-context-only-utils"] }
 solana-fee-calculator = { workspace = true }
+solana-native-token = { workspace = true }
 solana-net-utils = { workspace = true }
 solana-pubsub-client = { workspace = true }
 solana-rent = { workspace = true }
@@ -81,3 +77,6 @@ solana-rpc = { workspace = true }
 solana-sdk-ids = { workspace = true }
 solana-streamer = { workspace = true, features = ["dev-context-only-utils"] }
 solana-test-validator = { workspace = true }
+
+[lints]
+workspace = true

@@ -14,7 +14,6 @@ targets = ["x86_64-unknown-linux-gnu"]
 agave-logger = { workspace = true }
 async-trait = { workspace = true }
 bincode = { workspace = true }
-borsh = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "cargo"] }
 futures = { workspace = true }
@@ -22,7 +21,6 @@ itertools = { workspace = true }
 [target.'cfg(not(any(target_env = "msvc", target_os = "freebsd")))'.dependencies]
 jemallocator = { workspace = true }
 log = { workspace = true }
-lru = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -31,14 +29,11 @@ solana-cli-config = { workspace = true }
 solana-clock = { workspace = true }
 solana-commitment-config = { workspace = true }
 solana-compute-budget-interface = { workspace = true }
-solana-connection-cache = { workspace = true }
-solana-core = { workspace = true }
 solana-hash = { workspace = true }
 solana-instruction = { workspace = true }
 solana-keypair = { workspace = true }
 solana-measure = { workspace = true }
 solana-message = { workspace = true }
-solana-native-token = { workspace = true }
 solana-pubkey = { workspace = true }
 solana-quic-definitions = { workspace = true }
 solana-rent = { workspace = true }
@@ -60,6 +55,7 @@ tools-common = { workspace = true }
 
 [dev-dependencies]
 crossbeam-channel = { workspace = true }
+solana-native-token = { workspace = true }
 solana-streamer = { workspace = true, features = ["dev-context-only-utils"] }
 
 [lints]
