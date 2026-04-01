@@ -48,6 +48,7 @@ solana-system-interface = { workspace = true }
 solana-time-utils = { workspace = true }
 solana-tpu-client-next = { workspace = true }
 solana-transaction = { workspace = true }
+spl-instruction-padding-interface = "=1.0.0"
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
@@ -64,6 +65,7 @@ solana-pubsub-client = { workspace = true }
 solana-rpc = { workspace = true }
 solana-streamer = { workspace = true, features = ["dev-context-only-utils"] }
 solana-test-validator = { workspace = true }
+solana-transaction-3 = { workspace = true }
 
 [lints]
 workspace = true

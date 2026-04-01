@@ -17,9 +17,11 @@ use {
     solana_sdk_ids::system_program,
     solana_signer::Signer,
     solana_test_validator::TestValidatorGenesis,
-    solana_transaction::versioned::VersionedTransaction,
+    solana_transaction_3::versioned::VersionedTransaction,
     solana_transaction_bench::{
-        cli::{ExecutionParams, SimpleTransferTxParams, TransactionParams},
+        cli::{
+            ExecutionParams, InstructionPaddingParams, SimpleTransferTxParams, TransactionParams,
+        },
         run_client::run_client,
     },
     std::{
@@ -121,6 +123,10 @@ fn test_transactions_sending() {
                     num_send_instructions_per_tx: 1,
                     tx_batch_size: None,
                     num_conflict_groups: None,
+                },
+                padding_params: InstructionPaddingParams {
+                    instruction_padding_data_size: None,
+                    instruction_padding_program_id: None,
                 },
             },
             ExecutionParams {

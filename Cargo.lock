@@ -9933,7 +9933,9 @@ dependencies = [
  "solana-test-validator",
  "solana-time-utils",
  "solana-tpu-client-next",
+ "solana-transaction 3.1.0",
  "solana-transaction 4.0.0",
+ "spl-instruction-padding-interface",
  "thiserror 2.0.18",
  "tikv-jemallocator",
  "tokio",
@@ -10444,6 +10446,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "233df81b75ab99b42f002b5cdd6e65a7505ffa930624f7096a7580a56765e9cf"
 dependencies = [
  "bytemuck",
+ "solana-pubkey 3.0.0",
+]
+
+[[package]]
+name = "spl-instruction-padding-interface"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c3a77c0c9b83b111ee29bc6aa6eaab54b82e1ed5db40ba9786527b80283c3ef"
+dependencies = [
+ "num_enum",
+ "solana-instruction",
+ "solana-program-error",
  "solana-pubkey 3.0.0",
 ]
 
