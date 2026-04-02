@@ -186,7 +186,7 @@ fn create_transaction_batch(
     let mut ix_batch = Vec::new();
     let mut remaining = current_batch_size;
     while remaining > 0 {
-        let chunk = remaining.min(7);
+        let chunk = remaining.min(6);
         ix_batch.push(chunk);
         remaining -= chunk;
     }
@@ -289,6 +289,7 @@ async fn create_accounts(
             break bh;
         }
         num_continuous_failed_attempts += 1;
+        sleep(ACCOUNT_CREATION_SLEEP_INTERVAL).await;
     };
 
     let (blockhash_sender, blockhash_receiver) = watch::channel(blockhash);
@@ -416,6 +417,56 @@ mod tests {
         let accounts = create_accounts(&rpc_client, &[Keypair::new()], 128, 1, 10).await;
 
         assert_eq!(accounts.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_txn_size_within_txn_limit() {
+        let rpc = Arc::new(RpcClient::new_mock("succeeds".to_string()));
+        let blockhash = rpc.get_latest_blockhash().await.unwrap();
+
+        let current_batch_size = 7;
+        let authorities = [Keypair::new()];
+        let balance_lamports = 10;
+        let txn = create_transaction_batch(
+            &authorities,
+            blockhash,
+            current_batch_size,
+            balance_lamports,
+        );
+
+        assert!(
+            !txn.is_empty(),
+            "expected at least one transaction in the generated batch"
+        );
+
+        // Solana legacy transactions must not exceed this serialized size.
+        // (This is a commonly cited hard limit of 1232 bytes.)
+        const SOLANA_TXN_MAX_BYTES: usize = 1232;
+
+        for (i, (tx, _new_accounts)) in txn.iter().enumerate() {
+            let txn_size = bincode::serialized_size(tx)
+                .expect("transaction should be bincode-serializable")
+                as usize;
+            assert!(
+                txn_size <= SOLANA_TXN_MAX_BYTES,
+                "transaction[{i}] serialized size {txn_size} exceeds Solana limit \
+                 {SOLANA_TXN_MAX_BYTES}"
+            );
+
+            match rpc.simulate_transaction(tx).await {
+                Ok(result) => {
+                    if let Some(err) = result.value.err {
+                        error!(
+                            "simulate_transaction failed for transaction[{i}]: {err:?}, logs={:?}",
+                            result.value.logs
+                        );
+                    }
+                }
+                Err(err) => {
+                    error!("simulate_transaction RPC error for transaction[{i}]: {err:?}");
+                }
+            }
+        }
     }
 
     /// Test that if only send transaction rpc call always fails, `create_accounts` returns correct error.
