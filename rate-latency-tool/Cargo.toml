@@ -12,16 +12,11 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [features]
 default = ["leader_tracker"]
-leader_tracker = [
-    "futures-util",
-    "solana-epoch-schedule",
-    "solana-pubsub-client",
-]
+leader_tracker = ["futures-util", "solana-epoch-schedule", "solana-pubsub-client"]
 
 [dependencies]
 agave-logger = { workspace = true }
 async-std = { workspace = true }
-bincode = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "cargo"] }
 csv-async = { workspace = true }
@@ -61,6 +56,7 @@ tokio-util = { workspace = true }
 tonic = { workspace = true }
 tools-common = { workspace = true }
 tpu-client-next-extensions = { workspace = true }
+wincode = { workspace = true }
 yellowstone-grpc-client = { workspace = true }
 yellowstone-grpc-proto = { workspace = true }
 
@@ -77,6 +73,7 @@ solana-rpc = { workspace = true }
 solana-sdk-ids = { workspace = true }
 solana-streamer = { workspace = true, features = ["dev-context-only-utils"] }
 solana-test-validator = { workspace = true }
+solana-transaction-3 = { workspace = true }
 
 [lints]
 workspace = true

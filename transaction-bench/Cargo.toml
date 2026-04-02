@@ -13,11 +13,11 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 agave-logger = { workspace = true }
 async-trait = { workspace = true }
-bincode = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "cargo"] }
 futures = { workspace = true }
 itertools = { workspace = true }
+wincode = { workspace = true }
 [target.'cfg(not(any(target_env = "msvc", target_os = "freebsd")))'.dependencies]
 jemallocator = { workspace = true }
 log = { workspace = true }
@@ -48,15 +48,24 @@ solana-system-interface = { workspace = true }
 solana-time-utils = { workspace = true }
 solana-tpu-client-next = { workspace = true }
 solana-transaction = { workspace = true }
+spl-instruction-padding-interface = "=1.0.0"
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tools-common = { workspace = true }
 
 [dev-dependencies]
+agave-logger = { workspace = true }
 crossbeam-channel = { workspace = true }
+solana-faucet = { workspace = true, features = ["dev-context-only-utils"] }
+solana-fee-calculator = { workspace = true }
 solana-native-token = { workspace = true }
+solana-net-utils = { workspace = true }
+solana-pubsub-client = { workspace = true }
+solana-rpc = { workspace = true }
 solana-streamer = { workspace = true, features = ["dev-context-only-utils"] }
+solana-test-validator = { workspace = true }
+solana-transaction-3 = { workspace = true }
 
 [lints]
 workspace = true

@@ -20,6 +20,7 @@ use {
 
 const COMPUTE_BUDGET_INSTRUCTION_CU_COST: u32 = 150;
 const SIMPLE_TRANSFER_INSTRUCTION_CU_COST: u32 = 150;
+const PADDED_TRANSFER_INSTRUCTION_CU_COST: u32 = 3_000;
 
 #[derive(Error, Debug)]
 pub enum TransactionGeneratorError {
@@ -77,14 +78,24 @@ impl TransactionGenerator {
             ..
         } = &self.transaction_params.simple_transfer_tx_params;
 
+        let per_instruction_cu_cost = if self
+            .transaction_params
+            .padding_params
+            .instruction_padding_data_size
+            .is_some()
+        {
+            PADDED_TRANSFER_INSTRUCTION_CU_COST
+        } else {
+            SIMPLE_TRANSFER_INSTRUCTION_CU_COST
+        };
         let transfer_tx_min_cu_budget = COMPUTE_BUDGET_INSTRUCTION_CU_COST
-            + SIMPLE_TRANSFER_INSTRUCTION_CU_COST * num_send_instructions_per_tx as u32;
+            + per_instruction_cu_cost * num_send_instructions_per_tx as u32;
 
         if transfer_tx_cu_budget < transfer_tx_min_cu_budget {
             error!(
                 "Insufficient CU budget for transfer transaction: set to {transfer_tx_cu_budget}, \
                  need at least {transfer_tx_min_cu_budget}.\nSet cli argument \
-                 --transfer_tx_cu_budget to {transfer_tx_min_cu_budget}",
+                 --transfer-tx-cu-budget to {transfer_tx_min_cu_budget}",
             );
             return Err(TransactionGeneratorError::GenerateTxBatchFailure);
         }
@@ -126,7 +137,7 @@ impl TransactionGenerator {
                                 payers,
                                 index_payer,
                                 blockhash,
-                                transaction_params.simple_transfer_tx_params,
+                                transaction_params,
                                 send_batch_size,
                             )
                             .await

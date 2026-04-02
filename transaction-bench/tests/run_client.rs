@@ -7,10 +7,6 @@ use {
     solana_keypair::Keypair,
     solana_net_utils::SocketAddrSpace,
     solana_pubsub_client::pubsub_client::PubsubClient,
-    solana_rate_latency_tool::{
-        cli::{AccountParams, ExecutionParams, LeaderTracker, TxAnalysisParams},
-        run_client::run_client,
-    },
     solana_rent::Rent,
     solana_rpc::{rpc::JsonRpcConfig, rpc_pubsub_service::PubSubConfig},
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
@@ -18,18 +14,26 @@ use {
         config::{RpcBlockSubscribeConfig, RpcBlockSubscribeFilter},
         response::RpcBlockUpdateError,
     },
+    solana_sdk_ids::system_program,
     solana_signer::Signer,
     solana_test_validator::TestValidatorGenesis,
     solana_transaction_3::versioned::VersionedTransaction,
-    spl_memo_interface::v3::id as spl_memo_id,
+    solana_transaction_bench::{
+        cli::{
+            ExecutionParams, InstructionPaddingParams, SimpleTransferTxParams, TransactionParams,
+        },
+        run_client::run_client,
+    },
     std::{
         net::{IpAddr, Ipv4Addr, SocketAddr},
         sync::Arc,
         time::Duration,
     },
     tokio::runtime::Builder,
-    tokio_util::sync::CancellationToken,
-    tools_common::accounts_file::create_ephemeral_accounts,
+    tools_common::{
+        accounts_file::create_ephemeral_accounts,
+        cli::{AccountParams, LeaderTracker},
+    },
 };
 
 #[test]
@@ -63,6 +67,7 @@ fn test_transactions_sending() {
 
     let rpc_client = Arc::new(test_validator.get_async_rpc_client());
     let websocket_url = test_validator.rpc_pubsub_url();
+    let tpu_addr = *(test_validator.tpu_quic());
 
     let rt = Builder::new_multi_thread()
         .worker_threads(2)
@@ -75,6 +80,7 @@ fn test_transactions_sending() {
         RpcBlockSubscribeFilter::All,
         Some(RpcBlockSubscribeConfig {
             commitment: Some(CommitmentConfig::confirmed()),
+            // Keep default light settings to reduce chances of unavailable full block payloads.
             encoding: None,
             transaction_details: None,
             show_rewards: None,
@@ -83,13 +89,12 @@ fn test_transactions_sending() {
     )
     .unwrap();
 
-    let cancel = CancellationToken::new();
-    let handle = rt.spawn(async {
+    let handle = rt.spawn(async move {
         let funding_key = Keypair::new();
         let funding_pubkey = funding_key.pubkey();
         // fund the payer account
         let latest_blockhash = get_latest_blockhash(rpc_client.as_ref()).await;
-        let _ = rpc_client
+        rpc_client
             .request_airdrop_with_blockhash(&funding_pubkey, 100_000_000, &latest_blockhash)
             .await
             .expect("Airdrop request should not fail.");
@@ -111,37 +116,39 @@ fn test_transactions_sending() {
             rpc_client,
             websocket_url,
             accounts,
+            TransactionParams {
+                simple_transfer_tx_params: SimpleTransferTxParams {
+                    lamports_to_transfer: 513,
+                    transfer_tx_cu_budget: 600,
+                    num_send_instructions_per_tx: 1,
+                    tx_batch_size: None,
+                    num_conflict_groups: None,
+                },
+                padding_params: InstructionPaddingParams {
+                    instruction_padding_data_size: None,
+                    instruction_padding_program_id: None,
+                },
+            },
             ExecutionParams {
                 staked_identity_file: None,
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
                 duration: Some(Duration::from_secs(5)),
                 num_max_open_connections: 1,
+                workers_pull_size: 1,
                 send_fanout: 1,
-                send_interval: Duration::from_millis(100),
                 compute_unit_price: Some(100),
-                handshake_timeout: Duration::from_secs(2),
-                leader_tracker: LeaderTracker::WsLeaderTracker,
+                leader_tracker: LeaderTracker::PinnedLeaderTracker { address: tpu_addr },
             },
-            TxAnalysisParams {
-                output_csv_file: None,
-                yellowstone_url: None,
-                yellowstone_token: None,
-                check_all_txs: false,
-            },
-            cancel,
         )
         .await
     });
 
-    rt.block_on(handle)
-        .expect("Should not fail joining client task.")
-        .expect("Should not fail running client.");
-
-    let mut num_memo_tx = 0;
+    let mut num_txs = 0;
     for _ in 0..10 {
         receiver.try_iter().for_each(|response| {
             if let Some(err) = response.value.err {
-                // sometimes block is not ready, see issues/33462
+                // sometimes block is not ready, see
+                // https://github.com/solana-labs/solana/issues/33462
                 assert_eq!(err, RpcBlockUpdateError::BlockStoreError);
             }
             if let Some(block) = response.value.block
@@ -150,9 +157,10 @@ fn test_transactions_sending() {
                 for encoded_tx in encoded_transactions {
                     let tx = encoded_tx.transaction.decode();
                     if let Some(tx) = tx
-                        && is_memo(tx)
+                        && is_transfer(&tx)
+                        && tx.message.instructions().len() == 2
                     {
-                        num_memo_tx += 1;
+                        num_txs += 1;
                     }
                 }
             }
@@ -160,10 +168,15 @@ fn test_transactions_sending() {
         std::thread::sleep(Duration::from_secs(1));
     }
 
-    assert_eq!(
-        num_memo_tx, 50,
-        "Expected to receive 50 memo txs but got {num_memo_tx}"
+    rt.block_on(handle)
+        .expect("Should not fail joining client task.")
+        .expect("Should not fail running client.");
+
+    assert!(
+        num_txs > 0,
+        "Expected to receive >0 transfer txs but got {num_txs}"
     );
+
     // If we don't drop the test_validator, the blocking web socket service
     // won't return, and the `block_subscribe_client` won't shut down
     drop(test_validator);
@@ -194,17 +207,12 @@ async fn wait_for_balance(client: &RpcClient, pubkey: &solana_pubkey::Pubkey, ta
     panic!("Airdrop balance did not reach target {target} for {pubkey}");
 }
 
-fn is_memo(tx: VersionedTransaction) -> bool {
+fn is_transfer(tx: &VersionedTransaction) -> bool {
     let message = &tx.message;
     let account_keys = message.static_account_keys();
 
-    for instruction in message.instructions() {
-        if instruction.program_id(account_keys) == &spl_memo_id() {
-            if let Ok(s) = std::str::from_utf8(&instruction.data) {
-                info!("Memo data: \"{s}\"");
-            }
-            return true;
-        }
-    }
-    false
+    message
+        .instructions()
+        .iter()
+        .any(|instruction| instruction.program_id(account_keys) == &system_program::id())
 }

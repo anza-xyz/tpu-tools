@@ -15,8 +15,8 @@ futures = { workspace = true }
 futures-util = { workspace = true }
 log = { workspace = true }
 solana-rpc-client = { workspace = true }
-solana-transaction-status = { workspace = true }
 solana-tpu-client-next = { workspace = true, features = ["metrics", "agave-unstable-api", "websocket-node-address-service"] }
+solana-transaction-status = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

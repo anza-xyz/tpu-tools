@@ -12,7 +12,7 @@ use {
     solana_commitment_config::CommitmentConfig,
     solana_hash::Hash,
     solana_keypair::Keypair,
-    solana_message::Message,
+    solana_message_3::Message,
     solana_pubkey::Pubkey,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::client_error::Error as ClientError,
