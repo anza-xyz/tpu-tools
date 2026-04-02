@@ -433,7 +433,7 @@ mod tests {
         let rpc = Arc::new(RpcClient::new_mock("succeeds".to_string()));
         let blockhash = rpc.get_latest_blockhash().await.unwrap();
 
-        let current_batch_size = MAX_CREATE_ACC_IX_PER_TX;
+        let current_batch_size = MAX_CREATE_ACC_IX_PER_TX + 1;
         let authorities = [Keypair::new()];
         let balance_lamports = 10;
         let txn = create_transaction_batch(
@@ -448,8 +448,8 @@ mod tests {
             "expected at least one transaction in the generated batch"
         );
 
-        // `Transaction` from the RPC client types is `solana-transaction` 3.x with bincode/serde;
-        // use `bincode::serialized_size` for a byte length bound (commonly ≤ 1232 for packets).
+        // Legacy packets are capped at 1232 bytes serialized (bincode/serde); `serialized_size`
+        // bounds the wire size for these `VersionedTransaction` values.
         const SOLANA_TXN_MAX_BYTES: usize = 1232;
 
         for (i, (tx, _new_accounts)) in txn.iter().enumerate() {
