@@ -4,7 +4,6 @@ use {
         input_parsers::parse_url_or_moniker, input_validators::normalize_to_url_if_moniker,
     },
     solana_commitment_config::CommitmentConfig,
-    solana_pubkey::Pubkey,
     std::{net::SocketAddr, num::NonZeroUsize, path::PathBuf},
     tokio::time::Duration,
     tools_common::cli::{AccountParams, LeaderTracker, ReadAccounts, WriteAccounts},
@@ -109,6 +108,14 @@ pub struct ExecutionParams {
         help = "If specified, limits the benchmark execution to the specified duration."
     )]
     pub duration: Option<Duration>,
+
+    #[clap(
+        long,
+        value_parser = value_parser!(NonZeroU64),
+        help = "Optional global target send rate in transactions per second. When set, \
+                transaction-bench switches to paced sending."
+    )]
+    pub target_tps: Option<NonZeroU64>,
 
     #[clap(
         long,
@@ -289,6 +296,7 @@ mod tests {
                 staked_identity_file: Some(PathBuf::from(&keypair_file_name)),
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
                 duration: Some(Duration::from_secs(120)),
+                target_tps: None,
                 leader_tracker: LeaderTracker::PinnedLeaderTracker {
                     address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8009),
                 },
@@ -428,6 +436,42 @@ mod tests {
         assert_eq!(padding_config.loaded_accounts_data_size_limit, 58 * 1024);
     }
 
+    #[test]
+    fn test_target_tps_execution_param() {
+        let keypair_file_name = "/home/testUser/masterKey.json";
+
+        let mut args = vec![
+            "test",
+            "-ul",
+            "--authority",
+            keypair_file_name,
+            "run",
+            "--lamports-to-transfer",
+            "1000",
+            "--transfer-tx-cu-budget",
+            "600",
+            "--target-tps",
+            "100",
+        ];
+        let (account_args, account_params) = get_common_account_params();
+        args.extend(account_args.iter());
+        let (exec_args, mut execution_params) = get_common_execution_params(keypair_file_name);
+        args.extend(exec_args.iter());
+        execution_params.target_tps = Some(NonZeroU64::new(100).unwrap());
+
+        let actual = ClientCliParameters::try_parse_from(args).unwrap();
+        let Command::Run {
+            account_params: actual_account_params,
+            execution_params: actual_execution_params,
+            ..
+        } = actual.command
+        else {
+            panic!("expected run command");
+        };
+
+        assert_eq!(actual_account_params, account_params);
+        assert_eq!(actual_execution_params, execution_params);
+    }
     #[test]
     fn test_write_accounts_command() {
         let keypair_file_name = "/home/testUser/masterKey.json";

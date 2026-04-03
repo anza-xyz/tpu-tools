@@ -22,7 +22,7 @@ use {
         },
         node_address_service::LeaderTpuCacheServiceConfig,
     },
-    std::{fmt::Debug, sync::Arc, time::Duration},
+    std::{fmt::Debug, num::NonZeroU64, sync::Arc, time::Duration},
     tokio::{
         sync::{mpsc, watch},
         task::JoinHandle,
@@ -49,6 +49,7 @@ const METRICS_REPORTING_INTERVAL: Duration = Duration::from_secs(1);
 /// Default number of streams per connection if stake-based computation fails.
 /// This failure happens if we use stake overrides.
 const DEFAULT_NUM_STREAMS_PER_CONNECTION: usize = 8;
+const TARGET_BATCHES_PER_SECOND: u64 = 10;
 
 async fn find_node_activated_stake(
     rpc_client: &Arc<RpcClient>,
@@ -129,6 +130,7 @@ pub async fn run_client(
         staked_identity_file,
         bind,
         duration,
+        target_tps,
         num_max_open_connections,
         workers_pull_size,
         send_fanout,
@@ -157,10 +159,18 @@ pub async fn run_client(
         .simple_transfer_tx_params
         .tx_batch_size
         .map(|n| n.get());
-    let send_batch_size = tx_batch_size.unwrap_or(num_streams_per_connection);
+    let send_batch_size =
+        compute_send_batch_size(tx_batch_size, num_streams_per_connection, target_tps);
+    let workers_pull_size =
+        compute_workers_pull_size(workers_pull_size, send_batch_size, target_tps);
     info!("Number of streams per connection is {num_streams_per_connection}.");
     if let Some(tx_batch_size) = tx_batch_size {
         info!("Using tx batch size override: {tx_batch_size}.");
+    } else if let Some(target_tps) = target_tps {
+        info!("Using rate-limited tx batch size {send_batch_size} for target {target_tps} tx/s.");
+    }
+    if let Some(target_tps) = target_tps {
+        info!("Using {workers_pull_size} generator workers for target {target_tps} tx/s.");
     }
 
     if let Some(num_conflict_groups) = transaction_params
@@ -217,6 +227,7 @@ pub async fn run_client(
         transaction_params,
         send_batch_size,
         duration,
+        target_tps,
         workers_pull_size,
     );
 
@@ -275,6 +286,42 @@ pub async fn run_client(
     join_service(blockhash_task_handle, "BlockhashUpdater").await?;
     join_service(scheduler_handle, "Scheduler").await?;
     Ok(())
+}
+
+#[allow(clippy::arithmetic_side_effects)]
+fn compute_send_batch_size(
+    tx_batch_size_override: Option<usize>,
+    num_streams_per_connection: usize,
+    target_tps: Option<NonZeroU64>,
+) -> usize {
+    tx_batch_size_override.unwrap_or_else(|| {
+        target_tps.map_or(num_streams_per_connection, |target_tps| {
+            let target_tps = target_tps.get();
+            let target_batch_size = target_tps.div_ceil(TARGET_BATCHES_PER_SECOND);
+            usize::try_from(target_batch_size)
+                .unwrap_or(usize::MAX)
+                .clamp(1, num_streams_per_connection)
+        })
+    })
+}
+
+#[allow(clippy::arithmetic_side_effects)]
+fn compute_workers_pull_size(
+    configured_workers_pull_size: usize,
+    send_batch_size: usize,
+    target_tps: Option<NonZeroU64>,
+) -> usize {
+    target_tps.map_or(configured_workers_pull_size, |target_tps| {
+        let target_batches_per_sec = target_tps
+            .get()
+            .div_ceil(u64::try_from(send_batch_size).unwrap_or(u64::MAX));
+        let guessed_workers = match target_batches_per_sec {
+            0..=1 => 1,
+            2..=10 => 2,
+            _ => 4,
+        };
+        guessed_workers.min(configured_workers_pull_size.max(1))
+    })
 }
 
 // Private function copied from streamer::nonblocking::swqos
