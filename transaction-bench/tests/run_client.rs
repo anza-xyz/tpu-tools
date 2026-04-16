@@ -12,12 +12,11 @@ use {
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::{
         config::{RpcBlockSubscribeConfig, RpcBlockSubscribeFilter},
-        response::RpcBlockUpdateError,
+        response::{RpcBlockUpdateError, transaction::versioned::VersionedTransaction},
     },
     solana_sdk_ids::system_program,
     solana_signer::Signer,
     solana_test_validator::TestValidatorGenesis,
-    solana_transaction_3::versioned::VersionedTransaction,
     solana_transaction_bench::{
         cli::{
             ExecutionParams, InstructionPaddingParams, SimpleTransferTxParams, TransactionParams,

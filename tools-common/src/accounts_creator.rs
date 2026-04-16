@@ -9,14 +9,14 @@ use {
     solana_commitment_config::CommitmentConfig,
     solana_hash::Hash,
     solana_keypair::Keypair,
-    solana_message_3::Message,
     solana_pubkey::Pubkey,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
-    solana_rpc_client_api::client_error::Error as ClientError,
+    solana_rpc_client_api::{
+        client_error::Error as ClientError, response::transaction::Transaction,
+    },
     solana_sdk_ids::system_program,
     solana_signer::Signer,
     solana_system_interface::instruction as system_instruction,
-    solana_transaction_3::Transaction,
     std::{path::PathBuf, sync::Arc},
     thiserror::Error,
     tokio::time::{Duration, sleep},
@@ -141,8 +141,9 @@ impl AccountsCreator {
         )];
 
         let blockhash = self.rpc_client.get_latest_blockhash().await?;
-        let message = Message::new_with_blockhash(&instructions, Some(&payer_pubkey), &blockhash);
-        let fee = self.rpc_client.get_fee_for_message(&message).await?;
+        let mut tx = Transaction::new_with_payer(&instructions, Some(&payer_pubkey));
+        tx.message.recent_blockhash = blockhash;
+        let fee = self.rpc_client.get_fee_for_message(&tx.message).await?;
         Ok(fee)
     }
 
@@ -190,9 +191,13 @@ fn create_transaction_batch(
                 &system_program::id(),
             )];
 
-            let message = Message::new(&instructions, Some(&authority.pubkey()));
             (
-                Transaction::new(&[authority, &new_account], message, blockhash),
+                Transaction::new_signed_with_payer(
+                    &instructions,
+                    Some(&authority.pubkey()),
+                    &[authority, &new_account],
+                    blockhash,
+                ),
                 new_account,
             )
         })
