@@ -8,7 +8,7 @@ use {
     solana_hash::Hash,
     solana_measure::measure::Measure,
     solana_tpu_client_next::transaction_batch::TransactionBatch,
-    std::sync::Arc,
+    std::{num::NonZeroU64, sync::Arc},
     thiserror::Error,
     tokio::{
         sync::{mpsc::Sender, watch},
@@ -38,6 +38,7 @@ pub struct TransactionGenerator {
     transaction_params: TransactionParams,
     send_batch_size: usize,
     run_duration: Option<Duration>,
+    target_tps: Option<NonZeroU64>,
     workers_pull_size: usize,
 }
 
@@ -49,6 +50,7 @@ impl TransactionGenerator {
         transaction_params: TransactionParams,
         send_batch_size: usize,
         duration: Option<Duration>,
+        target_tps: Option<NonZeroU64>,
         workers_pull_size: usize,
     ) -> Self {
         Self {
@@ -58,6 +60,7 @@ impl TransactionGenerator {
             transaction_params,
             send_batch_size,
             run_duration: duration,
+            target_tps,
             workers_pull_size,
         }
     }
@@ -101,6 +104,7 @@ impl TransactionGenerator {
         }
 
         let start = Instant::now();
+        let mut next_batch_at = self.target_tps.map(|_| start);
         loop {
             if let Some(run_duration) = self.run_duration
                 && start.elapsed() >= run_duration
@@ -118,6 +122,9 @@ impl TransactionGenerator {
             let blockhash = *self.blockhash_receiver.borrow();
 
             while futures.len() < self.workers_pull_size {
+                if let Some(next_batch_deadline) = next_batch_at {
+                    tokio::time::sleep_until(next_batch_deadline).await;
+                }
                 let send_batch_size = self.send_batch_size;
                 let transaction_params = self.transaction_params.clone();
                 let payers = payers.clone();
@@ -158,6 +165,15 @@ impl TransactionGenerator {
                             % len_payers;
                     }
                 }
+
+                if let Some(target_tps) = self.target_tps {
+                    let batch_interval = compute_batch_interval(send_batch_size, target_tps);
+                    next_batch_at = Some(
+                        next_batch_at
+                            .map(|next_batch_deadline| next_batch_deadline + batch_interval)
+                            .unwrap_or_else(|| Instant::now() + batch_interval),
+                    );
+                }
             }
             futures.join_next().await;
         }
@@ -185,4 +201,29 @@ async fn send_batch(wired_txs_batch: Vec<Vec<u8>>, transactions_sender: Sender<T
         "Time to send into transactions queue: {} us",
         measure_send_to_queue.as_us()
     );
+}
+
+#[allow(clippy::arithmetic_side_effects)]
+fn compute_batch_interval(send_batch_size: usize, target_tps: NonZeroU64) -> Duration {
+    let send_batch_size = u128::try_from(send_batch_size).unwrap_or(u128::MAX);
+    let target_tps = u128::from(target_tps.get());
+    let batch_interval_nanos = (send_batch_size * 1_000_000_000).div_ceil(target_tps);
+    Duration::from_nanos(u64::try_from(batch_interval_nanos).unwrap_or(u64::MAX))
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::compute_batch_interval, std::num::NonZeroU64, tokio::time::Duration};
+
+    #[test]
+    fn test_compute_batch_interval() {
+        assert_eq!(
+            compute_batch_interval(10, NonZeroU64::new(100).unwrap()),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            compute_batch_interval(1, NonZeroU64::new(1).unwrap()),
+            Duration::from_secs(1)
+        );
+    }
 }

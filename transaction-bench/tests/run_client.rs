@@ -133,6 +133,7 @@ fn test_transactions_sending() {
                 staked_identity_file: None,
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
                 duration: Some(Duration::from_secs(5)),
+                target_tps: None,
                 num_max_open_connections: 1,
                 workers_pull_size: 1,
                 send_fanout: 1,
