@@ -138,6 +138,7 @@ fn test_transactions_sending() {
                 workers_pull_size: 1,
                 send_fanout: 1,
                 compute_unit_price: Some(100),
+                num_tpu_clients: 1,
                 leader_tracker: LeaderTracker::PinnedLeaderTracker { address: tpu_addr },
             },
         )

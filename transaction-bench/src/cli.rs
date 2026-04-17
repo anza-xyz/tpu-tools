@@ -148,6 +148,15 @@ pub struct ExecutionParams {
     #[clap(long, help = "Sets compute-unit-price for transactions.")]
     pub compute_unit_price: Option<u64>,
 
+    #[clap(
+        long,
+        default_value_t = 1,
+        help = "Number of tpu-client-next instances to spawn. Each instance opens its own \
+                connection(s) to leader nodes, enabling multiple concurrent connections to the \
+                same peer. Generated transactions are distributed evenly across instances."
+    )]
+    pub num_tpu_clients: usize,
+
     #[clap(subcommand)]
     pub leader_tracker: LeaderTracker,
 }
@@ -309,6 +318,7 @@ mod tests {
                 workers_pull_size: 8,
                 send_fanout: 2,
                 compute_unit_price: Some(1000),
+                num_tpu_clients: 1,
             },
         )
     }

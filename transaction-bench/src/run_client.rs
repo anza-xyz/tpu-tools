@@ -6,6 +6,7 @@ use {
         generator::TransactionGenerator,
     },
     log::*,
+    solana_metrics::datapoint_info,
     solana_keypair::Keypair,
     solana_pubkey::Pubkey,
     solana_quic_definitions::{
@@ -16,7 +17,7 @@ use {
     solana_signer::{EncodableKey, Signer},
     solana_streamer::nonblocking::quic::ConnectionPeerType,
     solana_tpu_client_next::{
-        ConnectionWorkersScheduler,
+        ConnectionWorkersScheduler, SendTransactionStats,
         connection_workers_scheduler::{
             BindTarget, ConnectionWorkersSchedulerConfig, Fanout, StakeIdentity,
         },
@@ -121,6 +122,53 @@ where
     }
 }
 
+/// Periodically reads and resets stats from all scheduler instances, sums them,
+/// and reports the aggregate to InfluxDB under a single metric name.
+#[allow(clippy::arithmetic_side_effects)]
+async fn report_aggregated_stats(
+    all_stats: Vec<Arc<SendTransactionStats>>,
+    reporting_interval: Duration,
+    cancel: CancellationToken,
+) {
+    let mut interval = tokio::time::interval(reporting_interval);
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                let (mut connect_error, mut connection_error, mut successfully_sent,
+                     mut congestion_events, mut write_error) = (0i64, 0i64, 0i64, 0i64, 0i64);
+                for stats in &all_stats {
+                    let view = stats.read_and_reset();
+                    connect_error += (view.connect_error_cids_exhausted
+                        + view.connect_error_other
+                        + view.connect_error_invalid_remote_address) as i64;
+                    connection_error += (view.connection_error_reset
+                        + view.connection_error_cids_exhausted
+                        + view.connection_error_timed_out
+                        + view.connection_error_application_closed
+                        + view.connection_error_transport_error
+                        + view.connection_error_version_mismatch
+                        + view.connection_error_locally_closed) as i64;
+                    successfully_sent += view.successfully_sent as i64;
+                    congestion_events += view.transport_congestion_events as i64;
+                    write_error += (view.write_error_stopped
+                        + view.write_error_closed_stream
+                        + view.write_error_connection_lost
+                        + view.write_error_zero_rtt_rejected) as i64;
+                }
+                datapoint_info!(
+                    "transaction-bench-network",
+                    ("connect_error", connect_error, i64),
+                    ("connection_error", connection_error, i64),
+                    ("successfully_sent", successfully_sent, i64),
+                    ("congestion_events", congestion_events, i64),
+                    ("write_error", write_error, i64),
+                );
+            }
+            _ = cancel.cancelled() => break,
+        }
+    }
+}
+
 pub async fn run_client(
     rpc_client: Arc<RpcClient>,
     websocket_url: String,
@@ -136,6 +184,7 @@ pub async fn run_client(
         send_fanout,
         //TODO(klykov): pass to tx generator
         compute_unit_price: _,
+        num_tpu_clients,
         leader_tracker,
     }: ExecutionParams,
 ) -> Result<(), BenchClientError> {
@@ -217,13 +266,19 @@ pub async fn run_client(
 
     let blockhash_task_handle = tokio::spawn(async move { blockhash_updater.run().await });
 
-    // Use bounded to avoid producing too many batches of transactions.
-    let (transaction_sender, transaction_receiver) = mpsc::channel(GENERATOR_CHANNEL_SIZE);
+    // Create N channels, one per tpu-client-next instance.
+    let mut transaction_senders = Vec::with_capacity(num_tpu_clients);
+    let mut transaction_receivers = Vec::with_capacity(num_tpu_clients);
+    for _ in 0..num_tpu_clients {
+        let (sender, receiver) = mpsc::channel(GENERATOR_CHANNEL_SIZE);
+        transaction_senders.push(sender);
+        transaction_receivers.push(receiver);
+    }
 
     let transaction_generator = TransactionGenerator::new(
         accounts,
         blockhash_receiver,
-        transaction_sender,
+        transaction_senders,
         transaction_params,
         send_batch_size,
         duration,
@@ -239,19 +294,31 @@ pub async fn run_client(
         refresh_nodes_info_every: Duration::from_secs(30),
         max_consecutive_failures: 5,
     };
-    let leader_updater = create_leader_updater(
-        rpc_client.clone(),
-        leader_tracker,
-        config,
-        websocket_url,
-        cancel.clone(),
-    )
-    .await?;
 
-    let scheduler_handle: JoinHandle<Result<(), BenchClientError>> = tokio::spawn(async move {
-        let config = ConnectionWorkersSchedulerConfig {
+    if num_tpu_clients > 1 {
+        info!("Spawning {num_tpu_clients} tpu-client-next instances.");
+    }
+
+    let mut scheduler_handles: Vec<JoinHandle<Result<(), BenchClientError>>> =
+        Vec::with_capacity(num_tpu_clients);
+    let mut all_stats: Vec<Arc<SendTransactionStats>> = Vec::with_capacity(num_tpu_clients);
+    for transaction_receiver in transaction_receivers {
+        let leader_updater = create_leader_updater(
+            rpc_client.clone(),
+            leader_tracker.clone(),
+            config.clone(),
+            websocket_url.clone(),
+            cancel.clone(),
+        )
+        .await?;
+
+        let stake_identity =
+            validator_identity
+                .as_ref()
+                .map(|ident| StakeIdentity::new(ident));
+        let scheduler_config = ConnectionWorkersSchedulerConfig {
             bind: BindTarget::Address(bind),
-            stake_identity: validator_identity.map(|ident| StakeIdentity::new(&ident)),
+            stake_identity,
             num_connections: num_max_open_connections,
             worker_channel_size: WORKER_CHANNEL_SIZE,
             max_reconnect_attempts: MAX_RECONNECT_ATTEMPTS,
@@ -264,27 +331,39 @@ pub async fn run_client(
         };
 
         let (_, update_identity_receiver) = watch::channel(None);
+        let cancel_clone = cancel.clone();
         let scheduler = ConnectionWorkersScheduler::new(
             leader_updater,
             transaction_receiver,
             update_identity_receiver,
-            cancel.clone(),
+            cancel_clone,
         );
-        // leaking handle to this task, as it will run until the cancel signal is received
-        tokio::spawn(scheduler.get_stats().report_to_influxdb(
-            "transaction-bench-network",
-            METRICS_REPORTING_INTERVAL,
-            cancel,
-        ));
+        all_stats.push(scheduler.get_stats());
 
-        let broadcaster = Box::new(BackpressuredBroadcaster {});
-        scheduler.run_with_broadcaster(config, broadcaster).await?;
-        Ok(())
-    });
+        let scheduler_handle: JoinHandle<Result<(), BenchClientError>> =
+            tokio::spawn(async move {
+                let broadcaster = Box::new(BackpressuredBroadcaster {});
+                scheduler
+                    .run_with_broadcaster(scheduler_config, broadcaster)
+                    .await?;
+                Ok(())
+            });
+        scheduler_handles.push(scheduler_handle);
+    }
+
+    // Single metrics reporter aggregating stats across all tpu-client-next instances.
+    tokio::spawn(report_aggregated_stats(
+        all_stats,
+        METRICS_REPORTING_INTERVAL,
+        cancel,
+    ));
 
     join_service(transaction_generator_task_handle, "TransactionGenerator").await?;
     join_service(blockhash_task_handle, "BlockhashUpdater").await?;
-    join_service(scheduler_handle, "Scheduler").await?;
+    for (i, handle) in scheduler_handles.into_iter().enumerate() {
+        let name = format!("Scheduler-{i}");
+        join_service(handle, &name).await?;
+    }
     Ok(())
 }
 

@@ -34,7 +34,7 @@ pub enum TransactionGeneratorError {
 pub struct TransactionGenerator {
     accounts: AccountsFile,
     blockhash_receiver: watch::Receiver<Hash>,
-    transactions_sender: Sender<TransactionBatch>,
+    transactions_senders: Vec<Sender<TransactionBatch>>,
     transaction_params: TransactionParams,
     send_batch_size: usize,
     run_duration: Option<Duration>,
@@ -46,7 +46,7 @@ impl TransactionGenerator {
     pub fn new(
         accounts: AccountsFile,
         blockhash_receiver: watch::Receiver<Hash>,
-        transactions_sender: Sender<TransactionBatch>,
+        transactions_senders: Vec<Sender<TransactionBatch>>,
         transaction_params: TransactionParams,
         send_batch_size: usize,
         duration: Option<Duration>,
@@ -56,7 +56,7 @@ impl TransactionGenerator {
         Self {
             accounts,
             blockhash_receiver,
-            transactions_sender,
+            transactions_senders,
             transaction_params,
             send_batch_size,
             run_duration: duration,
@@ -103,6 +103,8 @@ impl TransactionGenerator {
             return Err(TransactionGeneratorError::GenerateTxBatchFailure);
         }
 
+        let num_senders = self.transactions_senders.len();
+        let mut sender_index: usize = 0;
         let start = Instant::now();
         let mut next_batch_at = self.target_tps.map(|_| start);
         loop {
@@ -116,7 +118,7 @@ impl TransactionGenerator {
                 break;
             }
 
-            if self.transactions_sender.is_closed() {
+            if self.transactions_senders.iter().all(|s| s.is_closed()) {
                 return Err(TransactionGeneratorError::ReceiverDropped);
             }
             let blockhash = *self.blockhash_receiver.borrow();
@@ -128,7 +130,8 @@ impl TransactionGenerator {
                 let send_batch_size = self.send_batch_size;
                 let transaction_params = self.transaction_params.clone();
                 let payers = payers.clone();
-                let transactions_sender = self.transactions_sender.clone();
+                let transactions_sender = self.transactions_senders[sender_index].clone();
+                sender_index = (sender_index + 1) % num_senders;
                 let transaction_type = TransactionType::Transfer;
 
                 match transaction_type {
