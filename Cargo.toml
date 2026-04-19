@@ -28,7 +28,7 @@ used_underscore_binding = "deny"
 
 [workspace.dependencies]
 # 1088d29ee4da0f04df71cb8f286667693412e43f is commit hash for Agave master as of 2026-01-26*, version 4.0
-agave-logger = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+agave-logger = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 async-std = "1.12.0"
 async-stream = "0.3.6"
 async-trait = "0.1.89"
@@ -46,47 +46,44 @@ log = "0.4.27"
 rand = "0.8.5"
 serde = "1.0.228" # must match the serde_derive version, see https://github.com/serde-rs/serde/issues/2584#issuecomment-1685252251
 serde_json = "1.0.149"
-solana-clap-v3-utils = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
-solana-cli-config = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-clap-v3-utils = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
+solana-cli-config = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 solana-clock = "3.0.1"
 solana-commitment-config = "3.1.1"
 solana-compute-budget-interface = "3.0.0"
 solana-config-interface = "2.0.0"
-solana-connection-cache = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-connection-cache = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 solana-epoch-info = "3.1.0"
 solana-epoch-schedule = "3.0.0"
-solana-faucet = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-faucet = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 solana-fee-calculator = "3.1.0"
 solana-hash = { version = "4.2.0", features = ["wincode"] }
 solana-instruction = "3.2.0"
 solana-keypair = "3.1.0"
-solana-measure = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-measure = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 solana-message = { version = "4.0.0", features = ["wincode"] }
-# solana-message and solana-transaction v3 are used for rpc-client compatibility.
-solana-message-3 = { package = "solana-message", version = "3.1.0" }
-solana-metrics = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-metrics = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 solana-native-token = "3.0.0"
-solana-net-utils = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-net-utils = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 solana-pubkey = { version = "4.0.0", default-features = false }
-solana-pubsub-client = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-pubsub-client = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 solana-quic-definitions = "3.0.0"
 solana-rent = "3.0.0"
-solana-rpc = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
-solana-rpc-client = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
-solana-rpc-client-api = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-rpc = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
+solana-rpc-client = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
+solana-rpc-client-api = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 solana-sdk-ids = "3.1.0"
 solana-sha256-hasher = "3.1.0"
 solana-signature = { version = "3.3.0" }
 solana-signer = "3.0.0"
-solana-streamer = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-streamer = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 solana-system-interface = "3.0.0"
-solana-test-validator = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-test-validator = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 solana-time-utils = "3.0.0"
-solana-tpu-client = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
-solana-tpu-client-next = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-tpu-client = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
+solana-tpu-client-next = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 solana-transaction = { version = "4.0.0", features = ["wincode"] }
-solana-transaction-3 = { package = "solana-transaction", version = "3.1.0" }
-solana-transaction-status = { version = "4.0.0-beta.3", features = ["agave-unstable-api"] }
+solana-transaction-status = { version = "4.0.0-beta.7", features = ["agave-unstable-api"] }
 spl-memo-interface = "2.0.0"
 thiserror = "2.0.18"
 tokio = "1.50.0"
