@@ -448,8 +448,8 @@ mod tests {
             "expected at least one transaction in the generated batch"
         );
 
-        // Solana legacy transactions must not exceed this serialized size.
-        // (This is a commonly cited hard limit of 1232 bytes.)
+        // `Transaction` from the RPC client types is `solana-transaction` 3.x with bincode/serde;
+        // use `bincode::serialized_size` for a byte length bound (commonly ≤ 1232 for packets).
         const SOLANA_TXN_MAX_BYTES: usize = 1232;
 
         for (i, (tx, _new_accounts)) in txn.iter().enumerate() {
