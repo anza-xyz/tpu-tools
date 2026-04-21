@@ -10,11 +10,33 @@ use {
     tools_common::cli::{AccountParams, LeaderTracker, ReadAccounts, WriteAccounts},
 };
 
+const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:0";
+
 fn parse_and_normalize_url(addr: &str) -> Result<String, String> {
     match parse_url_or_moniker(addr) {
         Ok(parsed) => Ok(normalize_to_url_if_moniker(&parsed)),
         Err(e) => Err(format!("Invalid URL or moniker: {e}")),
     }
+}
+
+fn parse_endpoint_config(config: &str) -> Result<EndpointConfig, String> {
+    let (bind, staked_identity_file) = config
+        .split_once(',')
+        .map_or((config, None), |(bind, keypair)| (bind, Some(keypair)));
+    let bind = bind
+        .parse::<SocketAddr>()
+        .map_err(|err| format!("Invalid endpoint bind address: {err}"))?;
+    let staked_identity_file = staked_identity_file.map(PathBuf::from);
+    Ok(EndpointConfig {
+        bind,
+        staked_identity_file,
+    })
+}
+
+fn default_bind_address() -> SocketAddr {
+    DEFAULT_BIND_ADDRESS
+        .parse()
+        .expect("default bind address should be valid")
 }
 
 #[derive(Parser, Debug, PartialEq, Eq)]
@@ -100,8 +122,16 @@ pub struct ExecutionParams {
 
     /// Address to bind on, default will listen on all available interfaces, 0 that
     /// OS will choose the port.
-    #[clap(long, help = "bind", default_value = "0.0.0.0:0")]
+    #[clap(long, help = "bind", default_value = DEFAULT_BIND_ADDRESS)]
     pub bind: SocketAddr,
+
+    #[clap(
+        long,
+        value_parser = parse_endpoint_config,
+        help = "Endpoint configuration in the form <bind>[,<staked_identity_file>]. Can be \
+                repeated to use several endpoints, each with its own optional keypair."
+    )]
+    pub endpoint_configs: Vec<EndpointConfig>,
 
     #[clap(
         long,
@@ -138,6 +168,32 @@ pub struct ExecutionParams {
 
     #[clap(subcommand)]
     pub leader_tracker: LeaderTracker,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EndpointConfig {
+    pub bind: SocketAddr,
+    pub staked_identity_file: Option<PathBuf>,
+}
+
+impl ExecutionParams {
+    pub fn resolved_endpoint_configs(&self) -> Result<Vec<EndpointConfig>, String> {
+        if self.endpoint_configs.is_empty() {
+            return Ok(vec![EndpointConfig {
+                bind: self.bind,
+                staked_identity_file: self.staked_identity_file.clone(),
+            }]);
+        }
+
+        if self.staked_identity_file.is_some() || self.bind != default_bind_address() {
+            return Err(
+                "cannot combine --endpoint-config with --bind or --staked-identity-file"
+                    .to_string(),
+            );
+        }
+
+        Ok(self.endpoint_configs.clone())
+    }
 }
 
 #[derive(Args, Clone, Debug, PartialEq, Eq)]
@@ -288,6 +344,7 @@ mod tests {
             ExecutionParams {
                 staked_identity_file: Some(PathBuf::from(&keypair_file_name)),
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
+                endpoint_configs: vec![],
                 duration: Some(Duration::from_secs(120)),
                 leader_tracker: LeaderTracker::PinnedLeaderTracker {
                     address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8009),
@@ -426,6 +483,129 @@ mod tests {
         );
         assert_eq!(padding_config.data_size, 128);
         assert_eq!(padding_config.loaded_accounts_data_size_limit, 58 * 1024);
+    }
+
+    #[test]
+    fn test_execution_params_resolve_single_endpoint_defaults() {
+        let (_, execution_params) = get_common_execution_params("/home/testUser/masterKey.json");
+
+        assert_eq!(
+            execution_params.resolved_endpoint_configs().unwrap(),
+            vec![EndpointConfig {
+                bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
+                staked_identity_file: Some(PathBuf::from("/home/testUser/masterKey.json")),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_execution_params_resolve_multiple_endpoint_configs() {
+        let execution_params = ExecutionParams {
+            staked_identity_file: None,
+            bind: default_bind_address(),
+            endpoint_configs: vec![
+                EndpointConfig {
+                    bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9000),
+                    staked_identity_file: Some(PathBuf::from("/home/testUser/key1.json")),
+                },
+                EndpointConfig {
+                    bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9001),
+                    staked_identity_file: None,
+                },
+            ],
+            duration: Some(Duration::from_secs(120)),
+            leader_tracker: LeaderTracker::PinnedLeaderTracker {
+                address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8009),
+            },
+            num_max_open_connections: 16,
+            workers_pull_size: 8,
+            send_fanout: 2,
+            compute_unit_price: Some(1000),
+        };
+
+        assert_eq!(
+            execution_params.resolved_endpoint_configs().unwrap(),
+            execution_params.endpoint_configs
+        );
+    }
+
+    #[test]
+    fn test_execution_params_rejects_mixed_endpoint_flags() {
+        let execution_params = ExecutionParams {
+            staked_identity_file: Some(PathBuf::from("/home/testUser/masterKey.json")),
+            bind: default_bind_address(),
+            endpoint_configs: vec![EndpointConfig {
+                bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9000),
+                staked_identity_file: None,
+            }],
+            duration: Some(Duration::from_secs(120)),
+            leader_tracker: LeaderTracker::PinnedLeaderTracker {
+                address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8009),
+            },
+            num_max_open_connections: 16,
+            workers_pull_size: 8,
+            send_fanout: 2,
+            compute_unit_price: Some(1000),
+        };
+
+        assert!(execution_params.resolved_endpoint_configs().is_err());
+    }
+
+    #[test]
+    fn test_parse_multiple_endpoint_configs() {
+        let keypair_file_name = "/home/testUser/masterKey.json";
+        let mut args = vec![
+            "test",
+            "-ul",
+            "--authority",
+            keypair_file_name,
+            "run",
+            "--endpoint-config",
+            "127.0.0.1:9000,/home/testUser/key1.json",
+            "--endpoint-config",
+            "127.0.0.1:9001",
+            "--lamports-to-transfer",
+            "1000",
+            "--transfer-tx-cu-budget",
+            "600",
+        ];
+        let (account_args, _account_params) = get_common_account_params();
+        args.extend(account_args.iter());
+        let (_, execution_params) = get_common_execution_params(keypair_file_name);
+        args.extend([
+            "--duration",
+            "120",
+            "--send-fanout",
+            "2",
+            "--compute-unit-price",
+            "1000",
+            "pinned-leader-tracker",
+            "127.0.0.1:8009",
+        ]);
+
+        let actual = ClientCliParameters::try_parse_from(args).unwrap();
+        let Command::Run {
+            execution_params: actual_execution_params,
+            ..
+        } = actual.command
+        else {
+            panic!("expected run command");
+        };
+
+        assert_eq!(
+            actual_execution_params.endpoint_configs,
+            vec![
+                EndpointConfig {
+                    bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9000),
+                    staked_identity_file: Some(PathBuf::from("/home/testUser/key1.json")),
+                },
+                EndpointConfig {
+                    bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9001),
+                    staked_identity_file: None,
+                },
+            ]
+        );
+        assert_eq!(actual_execution_params.duration, execution_params.duration);
     }
 
     #[test]
