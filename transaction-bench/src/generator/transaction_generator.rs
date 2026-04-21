@@ -34,34 +34,41 @@ pub enum TransactionGeneratorError {
 pub struct TransactionGenerator {
     accounts: AccountsFile,
     blockhash_receiver: watch::Receiver<Hash>,
-    transactions_sender: Sender<TransactionBatch>,
+    transactions_senders: Vec<Sender<TransactionBatch>>,
     transaction_params: TransactionParams,
     send_batch_size: usize,
     run_duration: Option<Duration>,
     target_tps: Option<NonZeroU64>,
     workers_pull_size: usize,
+    compute_unit_price: u64,
+    random_compute_unit_price_max: u64,
 }
 
 impl TransactionGenerator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         accounts: AccountsFile,
         blockhash_receiver: watch::Receiver<Hash>,
-        transactions_sender: Sender<TransactionBatch>,
+        transactions_senders: Vec<Sender<TransactionBatch>>,
         transaction_params: TransactionParams,
         send_batch_size: usize,
         duration: Option<Duration>,
         target_tps: Option<NonZeroU64>,
         workers_pull_size: usize,
+        compute_unit_price: u64,
+        random_compute_unit_price_max: u64,
     ) -> Self {
         Self {
             accounts,
             blockhash_receiver,
-            transactions_sender,
+            transactions_senders,
             transaction_params,
             send_batch_size,
             run_duration: duration,
             target_tps,
             workers_pull_size,
+            compute_unit_price,
+            random_compute_unit_price_max,
         }
     }
 
@@ -103,6 +110,8 @@ impl TransactionGenerator {
             return Err(TransactionGeneratorError::GenerateTxBatchFailure);
         }
 
+        let num_senders = self.transactions_senders.len();
+        let mut sender_index: usize = 0;
         let start = Instant::now();
         let mut next_batch_at = self.target_tps.map(|_| start);
         loop {
@@ -116,7 +125,7 @@ impl TransactionGenerator {
                 break;
             }
 
-            if self.transactions_sender.is_closed() {
+            if self.transactions_senders.iter().all(|s| s.is_closed()) {
                 return Err(TransactionGeneratorError::ReceiverDropped);
             }
             let blockhash = *self.blockhash_receiver.borrow();
@@ -128,8 +137,11 @@ impl TransactionGenerator {
                 let send_batch_size = self.send_batch_size;
                 let transaction_params = self.transaction_params.clone();
                 let payers = payers.clone();
-                let transactions_sender = self.transactions_sender.clone();
+                let transactions_sender = self.transactions_senders[sender_index].clone();
+                sender_index = (sender_index + 1) % num_senders;
                 let transaction_type = TransactionType::Transfer;
+                let compute_unit_price = self.compute_unit_price;
+                let random_compute_unit_price_max = self.random_compute_unit_price_max;
 
                 match transaction_type {
                     TransactionType::Transfer => {
@@ -146,6 +158,8 @@ impl TransactionGenerator {
                                 blockhash,
                                 transaction_params,
                                 send_batch_size,
+                                compute_unit_price,
+                                random_compute_unit_price_max,
                             )
                             .await
                             else {

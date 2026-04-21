@@ -129,14 +129,15 @@ fn test_transactions_sending() {
                 },
             },
             ExecutionParams {
-                staked_identity_file: None,
+                staked_identity_files: vec![],
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
                 duration: Some(Duration::from_secs(5)),
                 target_tps: None,
                 num_max_open_connections: 1,
                 workers_pull_size: 1,
                 send_fanout: 1,
-                compute_unit_price: Some(100),
+                compute_unit_price: 100,
+                random_compute_unit_price_max: 0,
                 leader_tracker: LeaderTracker::PinnedLeaderTracker { address: tpu_addr },
             },
         )

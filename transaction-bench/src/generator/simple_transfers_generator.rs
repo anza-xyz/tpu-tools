@@ -20,6 +20,8 @@ pub(crate) fn generate_transfer_transaction_batch(
         padding_params,
     }: TransactionParams,
     send_batch_size: usize,
+    compute_unit_price: u64,
+    random_compute_unit_price_max: u64,
 ) -> JoinHandle<Vec<Vec<u8>>> {
     spawn_blocking_transaction_batch_generation("generate transfer transaction batch", move || {
         let mut txs: Vec<Vec<u8>> = Vec::with_capacity(send_batch_size);
@@ -57,6 +59,8 @@ pub(crate) fn generate_transfer_transaction_batch(
                 num_send_instructions_per_tx,
                 transfer_tx_cu_budget,
                 instruction_padding_config.as_ref(),
+                compute_unit_price,
+                random_compute_unit_price_max,
             );
             txs.push(tx);
             instructions.clear();
