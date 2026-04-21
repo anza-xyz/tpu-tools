@@ -1,5 +1,8 @@
 use {
-    crate::cli::{InstructionPaddingConfig, TRANSFER_TRANSACTION_LOADED_ACCOUNTS_DATA_SIZE},
+    crate::{
+        cli::{InstructionPaddingConfig, TRANSFER_TRANSACTION_LOADED_ACCOUNTS_DATA_SIZE},
+        priority_fee::{PriorityFeeMode, PriorityFeeStats},
+    },
     solana_compute_budget_interface::ComputeBudgetInstruction,
     solana_hash::Hash,
     solana_instruction::Instruction,
@@ -13,6 +16,7 @@ use {
     solana_system_interface::instruction as system_instruction,
     solana_transaction::{Transaction, versioned::VersionedTransaction},
     spl_instruction_padding_interface::instruction::wrap_instruction,
+    std::sync::Arc,
 };
 
 #[allow(dead_code)]
@@ -55,6 +59,8 @@ pub(crate) fn create_serialized_transfers<'a, S, R, L>(
     transaction_cu_budget: u32,
     instruction_padding_config: Option<&InstructionPaddingConfig>,
     compute_unit_price: Option<u64>,
+    priority_fee_mode: &PriorityFeeMode,
+    priority_fee_stats: &Arc<PriorityFeeStats>,
     use_txv1: bool,
 ) -> Vec<u8>
 where
@@ -62,6 +68,21 @@ where
     R: Iterator<Item = &'a Keypair>,
     L: Iterator<Item = &'a u64>,
 {
+    // Compute effective per-tx compute-unit-price: when a priority-fee mode is
+    // active, always emit a price (base + additional), using base=1 if the user
+    // did not pass --compute-unit-price. Otherwise pass `compute_unit_price`
+    // through unchanged (None => no set_compute_unit_price instruction).
+    let effective_compute_unit_price = match priority_fee_mode {
+        PriorityFeeMode::None => compute_unit_price,
+        _ => {
+            let base = compute_unit_price.unwrap_or(1).max(1);
+            let additional = priority_fee_mode.resolve();
+            let price = base.saturating_add(additional);
+            priority_fee_stats.record(price);
+            Some(price)
+        }
+    };
+
     // First account-from is also the transaction fee payer
     let tx_payer_kp = accounts_from.next().unwrap();
     let tx_payer = &tx_payer_kp.pubkey();
@@ -99,7 +120,7 @@ where
         recent_blockhash,
         transaction_cu_budget,
         instruction_padding_config,
-        compute_unit_price,
+        effective_compute_unit_price,
         use_txv1,
     );
 
@@ -288,6 +309,7 @@ mod tests {
         let mut lamports = lamports.iter();
         let mut instructions = Vec::new();
         let mut signers = Vec::new();
+        let priority_fee_stats = Arc::new(PriorityFeeStats::default());
 
         let wire_transaction = create_serialized_transfers(
             &mut accounts_from,
@@ -300,6 +322,8 @@ mod tests {
             600,
             None,
             compute_unit_price,
+            &PriorityFeeMode::None,
+            &priority_fee_stats,
             use_txv1,
         );
 

@@ -19,7 +19,8 @@ use {
     solana_test_validator::TestValidatorGenesis,
     solana_transaction_bench::{
         cli::{
-            ExecutionParams, InstructionPaddingParams, SimpleTransferTxParams, TransactionParams,
+            ExecutionParams, InstructionPaddingParams, PriorityFeeParams, SimpleTransferTxParams,
+            TransactionParams,
         },
         run_client::run_client,
     },
@@ -138,6 +139,10 @@ fn test_transactions_sending() {
                 workers_pull_size: 1,
                 send_fanout: 1,
                 compute_unit_price: Some(100),
+                priority_fee_params: PriorityFeeParams {
+                    random_compute_unit_price_max: 0,
+                    priority_fee_schedule_period_ms: None,
+                },
                 leader_tracker: LeaderTracker::PinnedLeaderTracker { address: tpu_addr },
             },
         )
@@ -157,6 +162,9 @@ fn test_transactions_sending() {
             {
                 for encoded_tx in encoded_transactions {
                     let tx = encoded_tx.transaction.decode();
+                    // Transactions built by the bench contain:
+                    //   set_compute_unit_limit + set_compute_unit_price + transfer
+                    // for the single-instruction transfer case used here.
                     if let Some(tx) = tx
                         && is_transfer(&tx)
                         && tx.message.instructions().len() == 3

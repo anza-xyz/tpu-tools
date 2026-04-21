@@ -1,5 +1,9 @@
 use {
-    crate::{cli::TransactionParams, generator::transaction_builder::create_serialized_transfers},
+    crate::{
+        cli::TransactionParams,
+        generator::transaction_builder::create_serialized_transfers,
+        priority_fee::{PriorityFeeMode, PriorityFeeStats},
+    },
     log::debug,
     rand::{seq::IteratorRandom, thread_rng},
     solana_hash::Hash,
@@ -11,6 +15,7 @@ use {
 
 // Generates a transaction batch of simple lamport transfer transactions.
 #[allow(clippy::arithmetic_side_effects)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn generate_transfer_transaction_batch(
     payers: Arc<Vec<Keypair>>,
     payer_index: usize,
@@ -21,6 +26,8 @@ pub(crate) fn generate_transfer_transaction_batch(
         use_txv1,
     }: TransactionParams,
     compute_unit_price: Option<u64>,
+    priority_fee_mode: PriorityFeeMode,
+    priority_fee_stats: Arc<PriorityFeeStats>,
     send_batch_size: usize,
 ) -> JoinHandle<Vec<Vec<u8>>> {
     spawn_blocking_transaction_batch_generation("generate transfer transaction batch", move || {
@@ -61,6 +68,8 @@ pub(crate) fn generate_transfer_transaction_batch(
                 transfer_tx_cu_budget,
                 instruction_padding_config.as_ref(),
                 compute_unit_price,
+                &priority_fee_mode,
+                &priority_fee_stats,
                 use_txv1,
             );
             txs.push(tx);

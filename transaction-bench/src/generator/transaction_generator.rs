@@ -3,6 +3,7 @@ use {
     crate::{
         cli::{SimpleTransferTxParams, TransactionParams},
         generator::simple_transfers_generator::generate_transfer_transaction_batch,
+        priority_fee::{PriorityFeeMode, PriorityFeeStats},
     },
     log::*,
     solana_hash::Hash,
@@ -37,6 +38,8 @@ pub struct TransactionGenerator {
     transactions_senders: Vec<Sender<TransactionBatch>>,
     transaction_params: TransactionParams,
     compute_unit_price: Option<u64>,
+    priority_fee_mode: PriorityFeeMode,
+    priority_fee_stats: Arc<PriorityFeeStats>,
     send_batch_size: usize,
     run_duration: Option<Duration>,
     target_tps: Option<NonZeroU64>,
@@ -44,12 +47,15 @@ pub struct TransactionGenerator {
 }
 
 impl TransactionGenerator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         accounts: AccountsFile,
         blockhash_receiver: watch::Receiver<Hash>,
         transactions_senders: Vec<Sender<TransactionBatch>>,
         transaction_params: TransactionParams,
         compute_unit_price: Option<u64>,
+        priority_fee_mode: PriorityFeeMode,
+        priority_fee_stats: Arc<PriorityFeeStats>,
         send_batch_size: usize,
         duration: Option<Duration>,
         target_tps: Option<NonZeroU64>,
@@ -61,6 +67,8 @@ impl TransactionGenerator {
             transactions_senders,
             transaction_params,
             compute_unit_price,
+            priority_fee_mode,
+            priority_fee_stats,
             send_batch_size,
             run_duration: duration,
             target_tps,
@@ -122,6 +130,8 @@ impl TransactionGenerator {
                 let send_batch_size = self.send_batch_size;
                 let transaction_params = self.transaction_params.clone();
                 let compute_unit_price = self.compute_unit_price;
+                let priority_fee_mode = self.priority_fee_mode.clone();
+                let priority_fee_stats = self.priority_fee_stats.clone();
                 let payers = payers.clone();
                 let transactions_sender = self.transactions_senders[sender_index].clone();
                 sender_index = (sender_index + 1) % num_senders;
@@ -142,6 +152,8 @@ impl TransactionGenerator {
                                 blockhash,
                                 transaction_params,
                                 compute_unit_price,
+                                priority_fee_mode,
+                                priority_fee_stats,
                                 send_batch_size,
                             )
                             .await

@@ -1,4 +1,5 @@
 use {
+    crate::priority_fee::PriorityFeeMode,
     clap::{Args, Parser, Subcommand, crate_description, crate_name, crate_version, value_parser},
     solana_clap_v3_utils::{
         input_parsers::parse_url_or_moniker, input_validators::normalize_to_url_if_moniker,
@@ -151,8 +152,14 @@ pub struct ExecutionParams {
     )]
     pub send_fanout: usize,
 
-    #[clap(long, help = "Sets compute-unit-price for transactions.")]
+    #[clap(
+        long,
+        help = "Sets compute-unit-price (microlamports) for transactions."
+    )]
     pub compute_unit_price: Option<u64>,
+
+    #[clap(flatten)]
+    pub priority_fee_params: PriorityFeeParams,
 
     #[clap(subcommand)]
     pub leader_tracker: LeaderTracker,
@@ -273,6 +280,60 @@ pub fn build_cli_parameters() -> ClientCliParameters {
     ClientCliParameters::parse()
 }
 
+/// CLI flags controlling the additional priority fee component. Flattened into
+/// [`ExecutionParams`]; convert to a runtime [`PriorityFeeMode`] via
+/// [`PriorityFeeParams::to_mode`].
+#[derive(Args, Clone, Debug, PartialEq, Eq)]
+#[clap(rename_all = "kebab-case")]
+pub struct PriorityFeeParams {
+    #[clap(
+        long,
+        default_value_t = 0,
+        help = "Max additional priority fee (microlamports) on top of \
+                --compute-unit-price.\nRandom mode (default): each tx gets base + \
+                rand(0..=N).\nScheduled mode (with --priority-fee-schedule-period-ms): fee cycles \
+                0..=N,\nadvancing one step every period. 0 = no additional component.\nWhen > 0 \
+                and --compute-unit-price is unset, base defaults to 1."
+    )]
+    pub random_compute_unit_price_max: u64,
+
+    #[clap(
+        long,
+        value_parser = value_parser!(NonZeroU64),
+        help = "Switch priority fee from random to deterministic scheduled mode.\n\
+                The fee ramps linearly from 0 to --random-compute-unit-price-max\n\
+                over N milliseconds, then resets and repeats (sawtooth). Both\n\
+                endpoints (0 and max) are observed exactly. Requires\n\
+                --random-compute-unit-price-max > 0 (no effect otherwise).\n\
+                N = 1 is degenerate (no resolvable ramp in a 1 ms window)."
+    )]
+    pub priority_fee_schedule_period_ms: Option<NonZeroU64>,
+}
+
+/// Resolve the parsed CLI args to a [`PriorityFeeMode`], rejecting
+/// `--priority-fee-schedule-period-ms` without a positive
+/// `--random-compute-unit-price-max` (silent no-op otherwise).
+impl TryFrom<&PriorityFeeParams> for PriorityFeeMode {
+    type Error = String;
+
+    fn try_from(params: &PriorityFeeParams) -> Result<Self, Self::Error> {
+        match (
+            params.random_compute_unit_price_max,
+            params.priority_fee_schedule_period_ms,
+        ) {
+            (0, Some(_)) => Err("--priority-fee-schedule-period-ms has no effect when \
+                                 --random-compute-unit-price-max is 0; set it to a positive value"
+                .to_string()),
+            (0, None) => Ok(PriorityFeeMode::None),
+            (max, Some(period)) => Ok(PriorityFeeMode::Scheduled {
+                max,
+                period_ms: period.get(),
+            }),
+            (max, None) => Ok(PriorityFeeMode::Random { max }),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {
@@ -318,6 +379,10 @@ mod tests {
                 workers_pull_size: 8,
                 send_fanout: 2,
                 compute_unit_price: Some(1000),
+                priority_fee_params: PriorityFeeParams {
+                    random_compute_unit_price_max: 0,
+                    priority_fee_schedule_period_ms: None,
+                },
             },
         )
     }
@@ -579,6 +644,39 @@ mod tests {
         args.extend(["--tx-batch-size", "64", "--num-conflict-groups", "0"]);
         args.extend(exec_args.iter());
         assert!(ClientCliParameters::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn test_priority_fee_params_try_into_mode() {
+        let params = |max: u64, period: Option<u64>| PriorityFeeParams {
+            random_compute_unit_price_max: max,
+            priority_fee_schedule_period_ms: period.map(|p| NonZeroU64::new(p).unwrap()),
+        };
+
+        // Random max = 0 with no schedule => None.
+        assert_eq!(
+            PriorityFeeMode::try_from(&params(0, None)).unwrap(),
+            PriorityFeeMode::None
+        );
+
+        // Random max > 0 with no schedule => Random.
+        assert_eq!(
+            PriorityFeeMode::try_from(&params(100, None)).unwrap(),
+            PriorityFeeMode::Random { max: 100 }
+        );
+
+        // Random max > 0 with schedule => Scheduled.
+        assert_eq!(
+            PriorityFeeMode::try_from(&params(10, Some(5))).unwrap(),
+            PriorityFeeMode::Scheduled {
+                max: 10,
+                period_ms: 5
+            }
+        );
+
+        // Scheduling with random max = 0 must be rejected: silently no-op
+        // was the bug, see PR #56 review.
+        assert!(PriorityFeeMode::try_from(&params(0, Some(5))).is_err());
     }
 
     /// Check that cannot use `write` subcommand together with parameters from `TransactionParams`

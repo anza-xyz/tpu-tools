@@ -4,6 +4,7 @@ use {
         cli::{ExecutionParams, TransactionParams},
         error::BenchClientError,
         generator::TransactionGenerator,
+        priority_fee::{PriorityFeeMode, PriorityFeeStats},
     },
     log::*,
     solana_keypair::Keypair,
@@ -127,6 +128,7 @@ where
 #[allow(clippy::arithmetic_side_effects)]
 async fn report_aggregated_stats(
     all_stats: Vec<Arc<SendTransactionStats>>,
+    priority_fee_stats: Arc<PriorityFeeStats>,
     reporting_interval: Duration,
     cancel: CancellationToken,
 ) {
@@ -163,6 +165,14 @@ async fn report_aggregated_stats(
                     ("congestion_events", congestion_events, i64),
                     ("write_error", write_error, i64),
                 );
+
+                let (total_priority_fees, priority_fee_tx_count) =
+                    priority_fee_stats.read_and_reset();
+                datapoint_info!(
+                    "transaction-bench-priority-fees",
+                    ("total_priority_fees", total_priority_fees, i64),
+                    ("tx_count", priority_fee_tx_count, i64),
+                );
             }
             _ = cancel.cancelled() => break,
         }
@@ -183,6 +193,7 @@ pub async fn run_client(
         workers_pull_size,
         send_fanout,
         compute_unit_price,
+        priority_fee_params,
         leader_tracker,
     }: ExecutionParams,
 ) -> Result<(), BenchClientError> {
@@ -272,12 +283,17 @@ pub async fn run_client(
         transaction_receivers.push(receiver);
     }
 
+    let priority_fee_mode = PriorityFeeMode::try_from(&priority_fee_params)
+        .map_err(BenchClientError::InvalidCliArguments)?;
+    let priority_fee_stats = Arc::new(PriorityFeeStats::default());
     let transaction_generator = TransactionGenerator::new(
         accounts,
         blockhash_receiver,
         transaction_senders,
         transaction_params,
         compute_unit_price,
+        priority_fee_mode,
+        priority_fee_stats.clone(),
         send_batch_size,
         duration,
         target_tps,
@@ -348,6 +364,7 @@ pub async fn run_client(
     // Single metrics reporter aggregating stats across all tpu-client-next instances.
     tokio::spawn(report_aggregated_stats(
         all_stats,
+        priority_fee_stats,
         METRICS_REPORTING_INTERVAL,
         cancel,
     ));
