@@ -1,8 +1,13 @@
 use {
     crate::cli::InstructionPaddingConfig,
-    solana_compute_budget_interface::ComputeBudgetInstruction, solana_hash::Hash,
-    solana_instruction::Instruction, solana_keypair::Keypair, solana_signer::Signer,
-    solana_system_interface::instruction as system_instruction, solana_transaction::Transaction,
+    rand::{Rng, thread_rng},
+    solana_compute_budget_interface::ComputeBudgetInstruction,
+    solana_hash::Hash,
+    solana_instruction::Instruction,
+    solana_keypair::Keypair,
+    solana_signer::Signer,
+    solana_system_interface::instruction as system_instruction,
+    solana_transaction::Transaction,
     spl_instruction_padding_interface::instruction::wrap_instruction,
 };
 
@@ -33,6 +38,7 @@ pub(crate) fn create_serialized_signed_transaction(
     wincode::serialize(&tx).expect("serialize Transaction in send_batch")
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn create_serialized_transfers<'a, S, R, L>(
     accounts_from: &mut S,
     accounts_to: &mut R,
@@ -43,6 +49,8 @@ pub(crate) fn create_serialized_transfers<'a, S, R, L>(
     num_send_instructions_per_tx: usize,
     transaction_cu_budget: u32,
     instruction_padding_config: Option<&InstructionPaddingConfig>,
+    compute_unit_price: u64,
+    random_compute_unit_price_max: u64,
 ) -> Vec<u8>
 where
     S: Iterator<Item = &'a Keypair>,
@@ -58,10 +66,19 @@ where
         );
     }
 
+    let base = compute_unit_price.max(1);
+    let random_component = if random_compute_unit_price_max == 0 {
+        0
+    } else {
+        thread_rng().gen_range(0..=random_compute_unit_price_max)
+    };
+    let price = base.saturating_add(random_component);
+
     instructions.insert(
         0,
         ComputeBudgetInstruction::set_compute_unit_limit(transaction_cu_budget),
     );
+    instructions.insert(1, ComputeBudgetInstruction::set_compute_unit_price(price));
 
     // First account-from is also the transaction fee payer
     let tx_payer_kp = accounts_from.next().unwrap();

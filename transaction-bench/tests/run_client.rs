@@ -137,7 +137,8 @@ fn test_transactions_sending() {
                 num_max_open_connections: 1,
                 workers_pull_size: 1,
                 send_fanout: 1,
-                compute_unit_price: Some(100),
+                compute_unit_price: 100,
+                random_compute_unit_price_max: 0,
                 leader_tracker: LeaderTracker::PinnedLeaderTracker { address: tpu_addr },
             },
         )

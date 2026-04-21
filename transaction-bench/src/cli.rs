@@ -151,9 +151,21 @@ pub struct ExecutionParams {
     )]
     pub send_fanout: usize,
 
-    #[clap(long, help = "Sets compute-unit-price for transactions.")]
-    pub compute_unit_price: Option<u64>,
+    #[clap(
+        long,
+        default_value_t = 0,
+        help = "Base compute-unit-price (microlamports) for every transaction.\n\
+                0 = minimum price (1 microlamport)."
+    )]
+    pub compute_unit_price: u64,
 
+    #[clap(
+        long,
+        default_value_t = 0,
+        help = "Max random priority fee (microlamports) added on top of --compute-unit-price.\n\
+                Each tx gets base + rand(0..=N). 0 = no random component."
+    )]
+    pub random_compute_unit_price_max: u64,
 
     #[clap(subcommand)]
     pub leader_tracker: LeaderTracker,
@@ -315,7 +327,8 @@ mod tests {
                 num_max_open_connections: 16,
                 workers_pull_size: 8,
                 send_fanout: 2,
-                compute_unit_price: Some(1000),
+                compute_unit_price: 1000,
+                random_compute_unit_price_max: 0,
             },
         )
     }

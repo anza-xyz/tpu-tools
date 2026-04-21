@@ -175,27 +175,23 @@ pub async fn run_client(
     accounts: AccountsFile,
     transaction_params: TransactionParams,
     ExecutionParams {
-        staked_identity_file,
+        staked_identity_files,
         bind,
         duration,
         target_tps,
         num_max_open_connections,
         workers_pull_size,
         send_fanout,
-        //TODO(klykov): pass to tx generator
-        compute_unit_price: _,
-        num_tpu_clients,
+        compute_unit_price,
+        random_compute_unit_price_max,
         leader_tracker,
     }: ExecutionParams,
 ) -> Result<(), BenchClientError> {
-    let validator_identity = if let Some(staked_identity_file) = staked_identity_file {
-        Some(
-            Keypair::read_from_file(staked_identity_file)
-                .map_err(|_err| BenchClientError::KeypairReadFailure)?,
-        )
-    } else {
-        None
-    };
+    let num_tpu_clients = staked_identity_files.len().max(1);
+    let validator_identity = staked_identity_files.first().map(|path| {
+        Keypair::read_from_file(path)
+            .map_err(|_err| BenchClientError::KeypairReadFailure)
+    }).transpose()?;
 
     // Set up size of the txs batch to put into the queue to be equal to the num_streams_per_connection
     let num_streams_per_connection = compute_num_streams(
@@ -284,6 +280,8 @@ pub async fn run_client(
         duration,
         target_tps,
         workers_pull_size,
+        compute_unit_price,
+        random_compute_unit_price_max,
     );
 
     let cancel = CancellationToken::new();

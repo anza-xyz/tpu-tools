@@ -40,9 +40,12 @@ pub struct TransactionGenerator {
     run_duration: Option<Duration>,
     target_tps: Option<NonZeroU64>,
     workers_pull_size: usize,
+    compute_unit_price: u64,
+    random_compute_unit_price_max: u64,
 }
 
 impl TransactionGenerator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         accounts: AccountsFile,
         blockhash_receiver: watch::Receiver<Hash>,
@@ -52,6 +55,8 @@ impl TransactionGenerator {
         duration: Option<Duration>,
         target_tps: Option<NonZeroU64>,
         workers_pull_size: usize,
+        compute_unit_price: u64,
+        random_compute_unit_price_max: u64,
     ) -> Self {
         Self {
             accounts,
@@ -62,6 +67,8 @@ impl TransactionGenerator {
             run_duration: duration,
             target_tps,
             workers_pull_size,
+            compute_unit_price,
+            random_compute_unit_price_max,
         }
     }
 
@@ -133,6 +140,8 @@ impl TransactionGenerator {
                 let transactions_sender = self.transactions_senders[sender_index].clone();
                 sender_index = (sender_index + 1) % num_senders;
                 let transaction_type = TransactionType::Transfer;
+                let compute_unit_price = self.compute_unit_price;
+                let random_compute_unit_price_max = self.random_compute_unit_price_max;
 
                 match transaction_type {
                     TransactionType::Transfer => {
@@ -149,6 +158,8 @@ impl TransactionGenerator {
                                 blockhash,
                                 transaction_params,
                                 send_batch_size,
+                                compute_unit_price,
+                                random_compute_unit_price_max,
                             )
                             .await
                             else {
