@@ -42,7 +42,7 @@ $TOOL -ut --authority $FUNDER --validate-accounts read-accounts-run  --accounts-
 
 ### How to analyze the results
 
-The result of the execution is file specified by `--output-csv-file`. This file has csv format and might be analyzed elsewhere. As an example, we provide a jupyter notebook which can be found in the scripts folder.
+The result of the execution is file specified by `--output-csv-file`. This file has csv format and might be analyzed elsewhere.
 
 ### How to setup local validator with geyser plugin (yellostone)
 
