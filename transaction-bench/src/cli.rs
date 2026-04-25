@@ -99,8 +99,14 @@ pub enum Command {
 #[clap(rename_all = "kebab-case")]
 pub struct ExecutionParams {
     // Cannot use value_parser to read keypair file because Keypair is not Clone.
-    #[clap(long, help = "validator identity for staked connection.")]
-    pub staked_identity_file: Option<PathBuf>,
+    #[clap(
+        long = "staked-identity-file",
+        help = "Validator identity keypair file for staked connection. Spawns one \
+                tpu-client-next instance per occurrence. Repeat the same file to get multiple \
+                connections under one identity, or use different files for distinct stake \
+                allocations. Without this flag a single unstaked instance is used."
+    )]
+    pub staked_identity_files: Vec<PathBuf>,
 
     /// Address to bind on, default will listen on all available interfaces, 0 that
     /// OS will choose the port.
@@ -147,6 +153,7 @@ pub struct ExecutionParams {
 
     #[clap(long, help = "Sets compute-unit-price for transactions.")]
     pub compute_unit_price: Option<u64>,
+
 
     #[clap(subcommand)]
     pub leader_tracker: LeaderTracker,
@@ -298,7 +305,7 @@ mod tests {
                 "127.0.0.1:8009",
             ],
             ExecutionParams {
-                staked_identity_file: Some(PathBuf::from(&keypair_file_name)),
+                staked_identity_files: vec![PathBuf::from(&keypair_file_name)],
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
                 duration: Some(Duration::from_secs(120)),
                 target_tps: None,

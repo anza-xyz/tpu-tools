@@ -129,7 +129,7 @@ fn test_transactions_sending() {
                 },
             },
             ExecutionParams {
-                staked_identity_file: None,
+                staked_identity_files: vec![],
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
                 duration: Some(Duration::from_secs(5)),
                 target_tps: None,
