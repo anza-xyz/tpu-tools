@@ -1,0 +1,62 @@
+name: Compile
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "**.rs"
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/compile.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  SHELL: /bin/bash
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
+
+jobs:
+  build:
+    name: cargo build --workspace --all-targets
+    if: github.repository == 'anza-xyz/tpu-tools'
+    timeout-minutes: 60
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696  # v0.0.10
+        with:
+          version: "v0.10.0"
+
+      - name: Install required packages
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            libclang-dev \
+            libprotobuf-dev \
+            libssl-dev \
+            libudev-dev \
+            pkg-config \
+            zlib1g-dev \
+            llvm \
+            clang \
+            cmake \
+            make \
+            protobuf-compiler
+
+      - name: Setup Rust
+        shell: bash
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+
+      - name: Build workspace (all targets)
+        shell: bash
+        run: cargo build --workspace --all-targets --locked

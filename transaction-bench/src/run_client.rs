@@ -175,7 +175,7 @@ pub async fn run_client(
     accounts: AccountsFile,
     transaction_params: TransactionParams,
     ExecutionParams {
-        staked_identity_file,
+        staked_identity_files,
         bind,
         duration,
         target_tps,
@@ -184,23 +184,21 @@ pub async fn run_client(
         send_fanout,
         //TODO(klykov): pass to tx generator
         compute_unit_price: _,
-        num_tpu_clients,
         leader_tracker,
     }: ExecutionParams,
 ) -> Result<(), BenchClientError> {
-    let validator_identity = if let Some(staked_identity_file) = staked_identity_file {
-        Some(
-            Keypair::read_from_file(staked_identity_file)
-                .map_err(|_err| BenchClientError::KeypairReadFailure)?,
-        )
-    } else {
-        None
-    };
+    let validator_identities: Vec<Keypair> = staked_identity_files
+        .into_iter()
+        .map(|path| {
+            Keypair::read_from_file(&path).map_err(|_err| BenchClientError::KeypairReadFailure)
+        })
+        .collect::<Result<_, _>>()?;
+    let num_tpu_clients = validator_identities.len().max(1);
 
     // Set up size of the txs batch to put into the queue to be equal to the num_streams_per_connection
     let num_streams_per_connection = compute_num_streams(
         &rpc_client,
-        validator_identity.as_ref().map(|keypair| keypair.pubkey()),
+        validator_identities.first().map(|keypair| keypair.pubkey()),
     )
     .await
     .unwrap_or(DEFAULT_NUM_STREAMS_PER_CONNECTION);
@@ -302,7 +300,7 @@ pub async fn run_client(
     let mut scheduler_handles: Vec<JoinHandle<Result<(), BenchClientError>>> =
         Vec::with_capacity(num_tpu_clients);
     let mut all_stats: Vec<Arc<SendTransactionStats>> = Vec::with_capacity(num_tpu_clients);
-    for transaction_receiver in transaction_receivers {
+    for (i, transaction_receiver) in transaction_receivers.into_iter().enumerate() {
         let leader_updater = create_leader_updater(
             rpc_client.clone(),
             leader_tracker.clone(),
@@ -312,8 +310,8 @@ pub async fn run_client(
         )
         .await?;
 
-        let stake_identity = validator_identity
-            .as_ref()
+        let stake_identity = validator_identities
+            .get(i)
             .map(|ident| StakeIdentity::new(ident));
         let scheduler_config = ConnectionWorkersSchedulerConfig {
             bind: BindTarget::Address(bind),
