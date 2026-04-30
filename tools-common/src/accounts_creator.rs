@@ -17,7 +17,7 @@ use {
     solana_sdk_ids::system_program,
     solana_signer::Signer,
     solana_system_interface::instruction as system_instruction,
-    std::{path::PathBuf, sync::Arc},
+    std::{path::PathBuf, sync::Arc, time::Instant},
     thiserror::Error,
     tokio::time::{Duration, sleep},
 };
@@ -31,6 +31,23 @@ const ACCOUNT_CREATION_SLEEP_INTERVAL: Duration = Duration::from_millis(150);
 /// The total time waiting for successful account creation is
 /// `MAX_CONTINUOUS_FAILED_ATTEMPTS*ACCOUNT_CREATION_SLEEP_INTERVAL`
 const MAX_CONTINUOUS_FAILED_ATTEMPTS: usize = 100;
+
+/// Maximum number of `system_instruction::create_account` instructions to pack
+/// into a single transaction without exceeding the 1232-byte packet limit.
+///
+/// Tx size with one authority (payer) and `N` new account signers:
+///   - signatures: 1 + 64*(N+1)
+///   - message header: 3
+///   - account keys: 1 + 32*(N+2)   (authority + N new accounts + system_program)
+///   - recent blockhash: 32
+///   - instructions: 1 + N*57       (each ix: 5 header bytes + 52 data bytes)
+///
+/// Total = 153*N + 166. Solving 153*N + 166 <= 1232 yields N <= 6.
+const MAX_CREATE_ACCOUNTS_PER_TX: usize = 6;
+
+/// Solana blockhashes are valid for 150 slots (~60s). We refresh well before
+/// expiry so packed transactions don't fail with `BlockhashNotFound` mid-batch.
+const BLOCKHASH_REFRESH_AFTER: Duration = Duration::from_secs(30);
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -174,54 +191,72 @@ fn create_transaction_batch(
     authorities: &[Keypair],
     blockhash: Hash,
     current_batch_size: usize,
+    accounts_per_tx: usize,
     balance_lamports: u64,
-) -> Vec<(Transaction, Keypair)> {
+) -> Vec<(Transaction, Vec<Keypair>)> {
+    assert!(
+        accounts_per_tx > 0 && accounts_per_tx <= MAX_CREATE_ACCOUNTS_PER_TX,
+        "accounts_per_tx must be in 1..={MAX_CREATE_ACCOUNTS_PER_TX}",
+    );
     let mut authorities_iter = authorities.iter().cycle();
-    (0..current_batch_size)
+    let num_txs = current_batch_size.div_ceil(accounts_per_tx);
+    let mut remaining = current_batch_size;
+    (0..num_txs)
         .map(|_| {
-            let new_account = Keypair::new();
+            let n = remaining.min(accounts_per_tx);
+            remaining -= n;
             let authority = authorities_iter
                 .next()
                 .expect("Authorities slice should not be empty because it is cyclical.");
-            let instructions = vec![system_instruction::create_account(
-                &authority.pubkey(),
-                &new_account.pubkey(),
-                balance_lamports,
-                0,
-                &system_program::id(),
-            )];
+            let new_accounts: Vec<Keypair> = (0..n).map(|_| Keypair::new()).collect();
+            let instructions: Vec<_> = new_accounts
+                .iter()
+                .map(|new_account| {
+                    system_instruction::create_account(
+                        &authority.pubkey(),
+                        &new_account.pubkey(),
+                        balance_lamports,
+                        0,
+                        &system_program::id(),
+                    )
+                })
+                .collect();
 
-            (
-                Transaction::new_signed_with_payer(
-                    &instructions,
-                    Some(&authority.pubkey()),
-                    &[authority, &new_account],
-                    blockhash,
-                ),
-                new_account,
-            )
+            // Signers: authority (payer) first, then every new account.
+            let mut signers: Vec<&Keypair> = Vec::with_capacity(1 + n);
+            signers.push(authority);
+            signers.extend(new_accounts.iter());
+
+            let tx = Transaction::new_signed_with_payer(
+                &instructions,
+                Some(&authority.pubkey()),
+                &signers,
+                blockhash,
+            );
+            (tx, new_accounts)
         })
         .collect()
 }
 
 async fn send_transaction_batch(
     rpc_client: &Arc<RpcClient>,
-    transaction_batch: Vec<(Transaction, Keypair)>,
+    transaction_batch: Vec<(Transaction, Vec<Keypair>)>,
 ) -> Vec<Keypair> {
     // send txs concurrently to RPC with confirmation
     let futures = transaction_batch
         .into_iter()
-        .map(|(tx, account_keypair)| async move {
+        .map(|(tx, account_keypairs)| async move {
             (
                 rpc_client.send_and_confirm_transaction(&tx).await,
-                account_keypair,
+                account_keypairs,
             )
         });
     // check how many landed
     let results = join_all(futures).await;
     results
         .into_iter()
-        .filter_map(|(result, account_keypair)| result.ok().map(|_| account_keypair))
+        .filter_map(|(result, account_keypairs)| result.ok().map(|_| account_keypairs))
+        .flatten()
         .collect()
 }
 
@@ -258,6 +293,7 @@ async fn create_accounts(
 
     let mut num_send_batch_attempts = 0;
     let mut num_continuous_failed_attempts = 0;
+    let mut cached_blockhash: Option<(Hash, Instant)> = None;
     while created_accounts.len() < num_accounts {
         let num_created_accounts = created_accounts.len();
         if num_continuous_failed_attempts >= max_continuos_failed_attempts {
@@ -276,17 +312,37 @@ async fn create_accounts(
              {num_continuous_failed_attempts}."
         );
 
-        let blockhash = rpc_client.get_latest_blockhash().await;
-        if let Err(error) = blockhash {
-            warn!("Failed to fetch blockhash. Error: {error}. Wait and try again.");
-            sleep(ACCOUNT_CREATION_SLEEP_INTERVAL).await;
-            num_continuous_failed_attempts += 1;
-            continue;
+        // Refresh blockhash only when the cache is stale, missing, or the
+        // previous attempt failed (a stale blockhash is a likely culprit).
+        let needs_refresh = match cached_blockhash {
+            Some((_, fetched_at)) => {
+                fetched_at.elapsed() >= BLOCKHASH_REFRESH_AFTER
+                    || num_continuous_failed_attempts > 0
+            }
+            None => true,
+        };
+        if needs_refresh {
+            match rpc_client.get_latest_blockhash().await {
+                Ok(hash) => cached_blockhash = Some((hash, Instant::now())),
+                Err(error) => {
+                    warn!("Failed to fetch blockhash. Error: {error}. Wait and try again.");
+                    sleep(ACCOUNT_CREATION_SLEEP_INTERVAL).await;
+                    num_continuous_failed_attempts += 1;
+                    continue;
+                }
+            }
         }
-        let blockhash = blockhash.unwrap();
+        let blockhash = cached_blockhash
+            .expect("blockhash cache populated above or refresh attempted")
+            .0;
 
-        let transaction_batch =
-            create_transaction_batch(authorities, blockhash, current_batch_size, balance_lamports);
+        let transaction_batch = create_transaction_batch(
+            authorities,
+            blockhash,
+            current_batch_size,
+            MAX_CREATE_ACCOUNTS_PER_TX,
+            balance_lamports,
+        );
         let newly_created_accounts = send_transaction_batch(rpc_client, transaction_batch).await;
         num_continuous_failed_attempts = if newly_created_accounts.is_empty() {
             num_continuous_failed_attempts + 1
@@ -406,9 +462,54 @@ mod tests {
         let seed = 12345;
         let rpc_client = Arc::new(create_mock_rpc_client(&["succeeds", "fails"], seed));
 
-        let accounts = create_accounts(&rpc_client, &[Keypair::new()], 12, 1, 10).await;
+        let accounts = create_accounts(&rpc_client, &[Keypair::new()], 12, 1, 30).await;
 
         assert_eq!(accounts.len(), 12);
+    }
+
+    /// `create_transaction_batch` packs multiple `create_account`
+    /// instructions per transaction.
+    #[test]
+    fn test_create_transaction_batch_packs_instructions() {
+        let authority = Keypair::new();
+        let blockhash = Hash::default();
+
+        // 13 accounts at 6/tx => 3 txs of sizes [6, 6, 1].
+        let batch = create_transaction_batch(
+            std::slice::from_ref(&authority),
+            blockhash,
+            13,
+            MAX_CREATE_ACCOUNTS_PER_TX,
+            1,
+        );
+        assert_eq!(batch.len(), 3);
+        let sizes: Vec<usize> = batch.iter().map(|(_, ks)| ks.len()).collect();
+        assert_eq!(sizes, vec![6, 6, 1]);
+
+        let total_keypairs: usize = batch.iter().map(|(_, ks)| ks.len()).sum();
+        assert_eq!(total_keypairs, 13);
+
+        for (tx, keypairs) in &batch {
+            assert_eq!(tx.message.instructions.len(), keypairs.len());
+            // signers = authority + every new account.
+            assert_eq!(tx.signatures.len(), keypairs.len() + 1);
+        }
+    }
+
+    /// Single-account requests still produce a single instruction transaction.
+    #[test]
+    fn test_create_transaction_batch_single_account() {
+        let authority = Keypair::new();
+        let batch = create_transaction_batch(
+            std::slice::from_ref(&authority),
+            Hash::default(),
+            1,
+            MAX_CREATE_ACCOUNTS_PER_TX,
+            1,
+        );
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].1.len(), 1);
+        assert_eq!(batch[0].0.message.instructions.len(), 1);
     }
 
     /// Tests that `create_accounts` handles transaction errors correctly.
