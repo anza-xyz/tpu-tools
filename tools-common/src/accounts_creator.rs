@@ -2,7 +2,10 @@
 //! Using RpcClient for simplicity.
 #![allow(clippy::arithmetic_side_effects)]
 use {
-    crate::accounts_file::{AccountsFile, write_accounts_file},
+    crate::{
+        accounts_file::{AccountsFile, write_accounts_file},
+        blockhash_updater::BlockhashUpdater,
+    },
     chrono::prelude::Utc,
     futures::future::join_all,
     log::*,
@@ -12,14 +15,18 @@ use {
     solana_pubkey::Pubkey,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::{
-        client_error::Error as ClientError, response::transaction::Transaction,
+        client_error::Error as ClientError,
+        response::transaction::Transaction,
     },
     solana_sdk_ids::system_program,
     solana_signer::Signer,
     solana_system_interface::instruction as system_instruction,
     std::{path::PathBuf, sync::Arc},
     thiserror::Error,
-    tokio::time::{Duration, sleep},
+    tokio::{
+        sync::watch,
+        time::{Duration, sleep},
+    },
 };
 
 /// How many transactions send concurrently.
@@ -175,53 +182,76 @@ fn create_transaction_batch(
     blockhash: Hash,
     current_batch_size: usize,
     balance_lamports: u64,
-) -> Vec<(Transaction, Keypair)> {
+) -> Vec<(Transaction, Vec<Keypair>)> {
     let mut authorities_iter = authorities.iter().cycle();
-    (0..current_batch_size)
-        .map(|_| {
-            let new_account = Keypair::new();
-            let authority = authorities_iter
-                .next()
-                .expect("Authorities slice should not be empty because it is cyclical.");
-            let instructions = vec![system_instruction::create_account(
-                &authority.pubkey(),
-                &new_account.pubkey(),
-                balance_lamports,
-                0,
-                &system_program::id(),
-            )];
 
-            (
-                Transaction::new_signed_with_payer(
-                    &instructions,
-                    Some(&authority.pubkey()),
-                    &[authority, &new_account],
-                    blockhash,
-                ),
-                new_account,
-            )
+    let mut ix_batch = Vec::new();
+    let mut remaining = current_batch_size;
+    while remaining > 0 {
+        let chunk = remaining.min(6);
+        ix_batch.push(chunk);
+        remaining -= chunk;
+    }
+
+    ix_batch
+        .iter()
+        .map(|ix_batch_size| {
+            let (txn, new_accounts): (Transaction, Vec<Keypair>) = {
+                let mut ixs = Vec::new();
+                let mut signers = Vec::new();
+                let authority = authorities_iter
+                    .next()
+                    .expect("Authorities slice should not be empty because it is cyclical.");
+                for _ in 0..*ix_batch_size {
+                    let new_account = Keypair::new();
+                    let instruction = system_instruction::create_account(
+                        &authority.pubkey(),
+                        &new_account.pubkey(),
+                        balance_lamports,
+                        0,
+                        &system_program::id(),
+                    );
+
+                    ixs.push(instruction);
+                    signers.push(new_account);
+                }
+
+                let signers_refs: Vec<&Keypair> =
+                    std::iter::once(authority).chain(signers.iter()).collect();
+                (
+                    Transaction::new_signed_with_payer(
+                        &ixs,
+                        Some(&authority.pubkey()),
+                        &signers_refs,
+                        blockhash,
+                    ),
+                    signers,
+                )
+            };
+
+            (txn, new_accounts)
         })
         .collect()
 }
 
 async fn send_transaction_batch(
     rpc_client: &Arc<RpcClient>,
-    transaction_batch: Vec<(Transaction, Keypair)>,
+    transaction_batch: Vec<(Transaction, Vec<Keypair>)>,
 ) -> Vec<Keypair> {
     // send txs concurrently to RPC with confirmation
     let futures = transaction_batch
         .into_iter()
-        .map(|(tx, account_keypair)| async move {
+        .map(|(tx, account_keypairs)| async move {
             (
                 rpc_client.send_and_confirm_transaction(&tx).await,
-                account_keypair,
+                account_keypairs,
             )
         });
-    // check how many landed
     let results = join_all(futures).await;
     results
         .into_iter()
-        .filter_map(|(result, account_keypair)| result.ok().map(|_| account_keypair))
+        .filter_map(|(result, account_keypairs)| result.ok().map(|_| account_keypairs))
+        .flatten()
         .collect()
 }
 
@@ -258,6 +288,24 @@ async fn create_accounts(
 
     let mut num_send_batch_attempts = 0;
     let mut num_continuous_failed_attempts = 0;
+
+    let blockhash = loop {
+        if num_continuous_failed_attempts >= max_continuos_failed_attempts {
+            return vec![];
+        }
+
+        if let Ok(bh) = rpc_client.get_latest_blockhash().await {
+            break bh;
+        }
+        num_continuous_failed_attempts += 1;
+        sleep(ACCOUNT_CREATION_SLEEP_INTERVAL).await;
+    };
+
+    let (blockhash_sender, blockhash_receiver) = watch::channel(blockhash);
+    let blockhash_updater = BlockhashUpdater::new(rpc_client.clone(), blockhash_sender);
+
+    tokio::spawn(async move { blockhash_updater.run().await });
+
     while created_accounts.len() < num_accounts {
         let num_created_accounts = created_accounts.len();
         if num_continuous_failed_attempts >= max_continuos_failed_attempts {
@@ -268,6 +316,8 @@ async fn create_accounts(
             break;
         }
 
+        let blockhash = *blockhash_receiver.borrow();
+
         let current_batch_size =
             calculate_batch_size(num_accounts, num_created_accounts, num_send_batch_attempts);
         debug!(
@@ -275,15 +325,6 @@ async fn create_accounts(
              {num_created_accounts}, num_continuous_failed_attempts: \
              {num_continuous_failed_attempts}."
         );
-
-        let blockhash = rpc_client.get_latest_blockhash().await;
-        if let Err(error) = blockhash {
-            warn!("Failed to fetch blockhash. Error: {error}. Wait and try again.");
-            sleep(ACCOUNT_CREATION_SLEEP_INTERVAL).await;
-            num_continuous_failed_attempts += 1;
-            continue;
-        }
-        let blockhash = blockhash.unwrap();
 
         let transaction_batch =
             create_transaction_batch(authorities, blockhash, current_batch_size, balance_lamports);
@@ -385,6 +426,56 @@ mod tests {
         let accounts = create_accounts(&rpc_client, &[Keypair::new()], 128, 1, 10).await;
 
         assert_eq!(accounts.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_txn_size_within_txn_limit() {
+        let rpc = Arc::new(RpcClient::new_mock("succeeds".to_string()));
+        let blockhash = rpc.get_latest_blockhash().await.unwrap();
+
+        let current_batch_size = 7;
+        let authorities = [Keypair::new()];
+        let balance_lamports = 10;
+        let txn = create_transaction_batch(
+            &authorities,
+            blockhash,
+            current_batch_size,
+            balance_lamports,
+        );
+
+        assert!(
+            !txn.is_empty(),
+            "expected at least one transaction in the generated batch"
+        );
+
+        // `Transaction` from the RPC client types is `solana-transaction` 3.x with bincode/serde;
+        // use `bincode::serialized_size` for a byte length bound (commonly ≤ 1232 for packets).
+        const SOLANA_TXN_MAX_BYTES: usize = 1232;
+
+        for (i, (tx, _new_accounts)) in txn.iter().enumerate() {
+            let txn_size = bincode::serialized_size(tx)
+                .expect("transaction should be bincode-serializable")
+                as usize;
+            assert!(
+                txn_size <= SOLANA_TXN_MAX_BYTES,
+                "transaction[{i}] serialized size {txn_size} exceeds Solana limit \
+                 {SOLANA_TXN_MAX_BYTES}"
+            );
+
+            match rpc.simulate_transaction(tx).await {
+                Ok(result) => {
+                    if let Some(err) = result.value.err {
+                        error!(
+                            "simulate_transaction failed for transaction[{i}]: {err:?}, logs={:?}",
+                            result.value.logs
+                        );
+                    }
+                }
+                Err(err) => {
+                    error!("simulate_transaction RPC error for transaction[{i}]: {err:?}");
+                }
+            }
+        }
     }
 
     /// Test that if only send transaction rpc call always fails, `create_accounts` returns correct error.
