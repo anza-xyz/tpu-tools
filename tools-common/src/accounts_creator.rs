@@ -12,7 +12,8 @@ use {
     solana_pubkey::Pubkey,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::{
-        client_error::Error as ClientError, response::transaction::Transaction,
+        client_error::Error as ClientError,
+        response::transaction::{Transaction, versioned::VersionedTransaction},
     },
     solana_sdk_ids::system_program,
     solana_signer::Signer,
@@ -175,7 +176,7 @@ fn create_transaction_batch(
     blockhash: Hash,
     current_batch_size: usize,
     balance_lamports: u64,
-) -> Vec<(Transaction, Keypair)> {
+) -> Vec<(VersionedTransaction, Keypair)> {
     let mut authorities_iter = authorities.iter().cycle();
     (0..current_batch_size)
         .map(|_| {
@@ -197,7 +198,8 @@ fn create_transaction_batch(
                     Some(&authority.pubkey()),
                     &[authority, &new_account],
                     blockhash,
-                ),
+                )
+                .into(),
                 new_account,
             )
         })
@@ -206,7 +208,7 @@ fn create_transaction_batch(
 
 async fn send_transaction_batch(
     rpc_client: &Arc<RpcClient>,
-    transaction_batch: Vec<(Transaction, Keypair)>,
+    transaction_batch: Vec<(VersionedTransaction, Keypair)>,
 ) -> Vec<Keypair> {
     // send txs concurrently to RPC with confirmation
     let futures = transaction_batch

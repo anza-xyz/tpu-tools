@@ -33,8 +33,8 @@ solana-hash = { workspace = true }
 solana-instruction = { workspace = true }
 solana-keypair = { workspace = true }
 solana-measure = { workspace = true }
-solana-metrics = { workspace = true }
 solana-message = { workspace = true }
+solana-metrics = { workspace = true }
 solana-pubkey = { workspace = true }
 solana-quic-definitions = { workspace = true }
 solana-rent = { workspace = true }

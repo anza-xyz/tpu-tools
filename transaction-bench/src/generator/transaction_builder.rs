@@ -1,8 +1,12 @@
 use {
     crate::cli::InstructionPaddingConfig,
-    solana_compute_budget_interface::ComputeBudgetInstruction, solana_hash::Hash,
-    solana_instruction::Instruction, solana_keypair::Keypair, solana_signer::Signer,
-    solana_system_interface::instruction as system_instruction, solana_transaction::Transaction,
+    solana_compute_budget_interface::ComputeBudgetInstruction,
+    solana_hash::Hash,
+    solana_instruction::Instruction,
+    solana_keypair::Keypair,
+    solana_signer::Signer,
+    solana_system_interface::instruction as system_instruction,
+    solana_transaction::{Transaction, versioned::VersionedTransaction},
     spl_instruction_padding_interface::instruction::wrap_instruction,
 };
 
@@ -23,14 +27,15 @@ pub(crate) fn create_serialized_signed_transaction(
     let mut signers = vec![payer];
     signers.extend(additional_signers);
 
-    let tx = Transaction::new_signed_with_payer(
+    let tx: VersionedTransaction = Transaction::new_signed_with_payer(
         &instructions,
         Some(&payer.pubkey()),
         &signers,
         recent_blockhash,
-    );
+    )
+    .into();
 
-    wincode::serialize(&tx).expect("serialize Transaction in send_batch")
+    wincode::serialize(&tx).expect("serialize VersionedTransaction in send_batch")
 }
 
 pub(crate) fn create_serialized_transfers<'a, S, R, L>(
@@ -93,10 +98,11 @@ where
         ));
     }
 
-    let tx =
-        Transaction::new_signed_with_payer(instructions, Some(tx_payer), signers, recent_blockhash);
+    let tx: VersionedTransaction =
+        Transaction::new_signed_with_payer(instructions, Some(tx_payer), signers, recent_blockhash)
+            .into();
 
-    wincode::serialize(&tx).expect("serialize Transaction in send_batch")
+    wincode::serialize(&tx).expect("serialize VersionedTransaction in send_batch")
 }
 
 fn maybe_wrap_instruction(

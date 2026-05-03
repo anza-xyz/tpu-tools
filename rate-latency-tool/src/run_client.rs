@@ -22,7 +22,7 @@ use {
         },
         node_address_service::LeaderTpuCacheServiceConfig,
     },
-    solana_transaction::Transaction,
+    solana_transaction::{Transaction, versioned::VersionedTransaction},
     std::{sync::Arc, time::Duration},
     tokio::{
         sync::{mpsc, watch},
@@ -312,11 +312,13 @@ fn create_memo_transaction(
         &[],
     ));
 
-    let tx = Transaction::new_signed_with_payer(
+    let tx: VersionedTransaction = Transaction::new_signed_with_payer(
         &instructions,
         Some(&payer.pubkey()),
         &[&payer],
         blockhash,
-    );
+    )
+    .into();
+
     (tx.signatures[0], wincode::serialize(&tx).unwrap())
 }
