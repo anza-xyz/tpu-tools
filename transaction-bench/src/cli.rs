@@ -154,7 +154,6 @@ pub struct ExecutionParams {
     #[clap(long, help = "Sets compute-unit-price for transactions.")]
     pub compute_unit_price: Option<u64>,
 
-
     #[clap(subcommand)]
     pub leader_tracker: LeaderTracker,
 }
@@ -167,6 +166,9 @@ pub struct TransactionParams {
 
     #[clap(flatten)]
     pub padding_params: InstructionPaddingParams,
+
+    #[clap(long, help = "Generate and send transfer transactions in V1 format.")]
+    pub use_txv1: bool,
     //TODO(klykov): memo
 }
 
@@ -198,7 +200,7 @@ pub struct InstructionPaddingConfig {
 
 // In case of plain transfer transaction, set loaded account data size to 30 KiB.
 // It is large enough yet smaller than 32 KiB page size, so it would cost 0 extra CU.
-const TRANSFER_TRANSACTION_LOADED_ACCOUNTS_DATA_SIZE: u32 = 30 * 1024;
+pub(crate) const TRANSFER_TRANSACTION_LOADED_ACCOUNTS_DATA_SIZE: u32 = 30 * 1024;
 // In case of padding program usage, we need to take into account program size too.
 const PADDING_PROGRAM_ACCOUNT_DATA_SIZE: u32 = 28 * 1024;
 
@@ -356,6 +358,7 @@ mod tests {
                         instruction_padding_data_size: None,
                         instruction_padding_program_id: None,
                     },
+                    use_txv1: false,
                 },
                 account_params,
                 execution_params,
@@ -409,6 +412,7 @@ mod tests {
                         instruction_padding_data_size: None,
                         instruction_padding_program_id: None,
                     },
+                    use_txv1: false,
                 },
                 execution_params,
             },
@@ -436,6 +440,7 @@ mod tests {
                 instruction_padding_data_size: Some(128),
                 instruction_padding_program_id: None,
             },
+            use_txv1: false,
         };
 
         let padding_config = params.instruction_padding_config().unwrap();
@@ -484,6 +489,35 @@ mod tests {
         assert_eq!(actual_account_params, account_params);
         assert_eq!(actual_execution_params, execution_params);
     }
+
+    #[test]
+    fn test_use_txv1_transaction_param() {
+        let keypair_file_name = "/home/testUser/masterKey.json";
+
+        let mut args = vec![
+            "test",
+            "-ul",
+            "--authority",
+            keypair_file_name,
+            "run",
+            "--use-txv1",
+        ];
+        let (account_args, _account_params) = get_common_account_params();
+        args.extend(account_args.iter());
+        let (exec_args, _execution_params) = get_common_execution_params(keypair_file_name);
+        args.extend(exec_args.iter());
+
+        let actual = ClientCliParameters::try_parse_from(args).unwrap();
+        let Command::Run {
+            transaction_params, ..
+        } = actual.command
+        else {
+            panic!("expected run command");
+        };
+
+        assert!(transaction_params.use_txv1);
+    }
+
     #[test]
     fn test_write_accounts_command() {
         let keypair_file_name = "/home/testUser/masterKey.json";

@@ -127,6 +127,7 @@ fn test_transactions_sending() {
                     instruction_padding_data_size: None,
                     instruction_padding_program_id: None,
                 },
+                use_txv1: false,
             },
             ExecutionParams {
                 staked_identity_files: vec![],
@@ -158,7 +159,7 @@ fn test_transactions_sending() {
                     let tx = encoded_tx.transaction.decode();
                     if let Some(tx) = tx
                         && is_transfer(&tx)
-                        && tx.message.instructions().len() == 2
+                        && tx.message.instructions().len() == 3
                     {
                         num_txs += 1;
                     }

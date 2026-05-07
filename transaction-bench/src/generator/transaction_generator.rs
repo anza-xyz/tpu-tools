@@ -36,6 +36,7 @@ pub struct TransactionGenerator {
     blockhash_receiver: watch::Receiver<Hash>,
     transactions_senders: Vec<Sender<TransactionBatch>>,
     transaction_params: TransactionParams,
+    compute_unit_price: Option<u64>,
     send_batch_size: usize,
     run_duration: Option<Duration>,
     target_tps: Option<NonZeroU64>,
@@ -48,6 +49,7 @@ impl TransactionGenerator {
         blockhash_receiver: watch::Receiver<Hash>,
         transactions_senders: Vec<Sender<TransactionBatch>>,
         transaction_params: TransactionParams,
+        compute_unit_price: Option<u64>,
         send_batch_size: usize,
         duration: Option<Duration>,
         target_tps: Option<NonZeroU64>,
@@ -58,6 +60,7 @@ impl TransactionGenerator {
             blockhash_receiver,
             transactions_senders,
             transaction_params,
+            compute_unit_price,
             send_batch_size,
             run_duration: duration,
             target_tps,
@@ -129,6 +132,7 @@ impl TransactionGenerator {
                 }
                 let send_batch_size = self.send_batch_size;
                 let transaction_params = self.transaction_params.clone();
+                let compute_unit_price = self.compute_unit_price;
                 let payers = payers.clone();
                 let transactions_sender = self.transactions_senders[sender_index].clone();
                 sender_index = (sender_index + 1) % num_senders;
@@ -148,6 +152,7 @@ impl TransactionGenerator {
                                 index_payer,
                                 blockhash,
                                 transaction_params,
+                                compute_unit_price,
                                 send_batch_size,
                             )
                             .await

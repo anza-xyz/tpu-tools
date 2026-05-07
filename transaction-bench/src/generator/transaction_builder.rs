@@ -1,9 +1,14 @@
 use {
-    crate::cli::InstructionPaddingConfig,
+    crate::cli::{InstructionPaddingConfig, TRANSFER_TRANSACTION_LOADED_ACCOUNTS_DATA_SIZE},
     solana_compute_budget_interface::ComputeBudgetInstruction,
     solana_hash::Hash,
     solana_instruction::Instruction,
     solana_keypair::Keypair,
+    solana_message::{
+        VersionedMessage,
+        v1::{Message as V1Message, TransactionConfig},
+    },
+    solana_pubkey::Pubkey,
     solana_signer::Signer,
     solana_system_interface::instruction as system_instruction,
     solana_transaction::{Transaction, versioned::VersionedTransaction},
@@ -48,26 +53,14 @@ pub(crate) fn create_serialized_transfers<'a, S, R, L>(
     num_send_instructions_per_tx: usize,
     transaction_cu_budget: u32,
     instruction_padding_config: Option<&InstructionPaddingConfig>,
+    compute_unit_price: Option<u64>,
+    use_txv1: bool,
 ) -> Vec<u8>
 where
     S: Iterator<Item = &'a Keypair>,
     R: Iterator<Item = &'a Keypair>,
     L: Iterator<Item = &'a u64>,
 {
-    if let Some(padding_config) = instruction_padding_config {
-        instructions.insert(
-            0,
-            ComputeBudgetInstruction::set_loaded_accounts_data_size_limit(
-                padding_config.loaded_accounts_data_size_limit,
-            ),
-        );
-    }
-
-    instructions.insert(
-        0,
-        ComputeBudgetInstruction::set_compute_unit_limit(transaction_cu_budget),
-    );
-
     // First account-from is also the transaction fee payer
     let tx_payer_kp = accounts_from.next().unwrap();
     let tx_payer = &tx_payer_kp.pubkey();
@@ -98,11 +91,107 @@ where
         ));
     }
 
-    let tx: VersionedTransaction =
-        Transaction::new_signed_with_payer(instructions, Some(tx_payer), signers, recent_blockhash)
-            .into();
+    let tx = create_transfer_transaction(
+        tx_payer,
+        instructions,
+        signers,
+        recent_blockhash,
+        transaction_cu_budget,
+        instruction_padding_config,
+        compute_unit_price,
+        use_txv1,
+    );
 
     wincode::serialize(&tx).expect("serialize VersionedTransaction in send_batch")
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_transfer_transaction(
+    tx_payer: &Pubkey,
+    instructions: &mut Vec<Instruction>,
+    signers: &[&Keypair],
+    recent_blockhash: Hash,
+    transaction_cu_budget: u32,
+    instruction_padding_config: Option<&InstructionPaddingConfig>,
+    compute_unit_price: Option<u64>,
+    use_txv1: bool,
+) -> VersionedTransaction {
+    if use_txv1 {
+        create_v1_transfer_transaction(
+            tx_payer,
+            instructions,
+            signers,
+            recent_blockhash,
+            transaction_cu_budget,
+            instruction_padding_config,
+            compute_unit_price,
+        )
+    } else {
+        create_legacy_transfer_transaction(
+            tx_payer,
+            instructions,
+            signers,
+            recent_blockhash,
+            transaction_cu_budget,
+            instruction_padding_config,
+            compute_unit_price,
+        )
+    }
+}
+
+fn create_legacy_transfer_transaction(
+    tx_payer: &Pubkey,
+    instructions: &mut Vec<Instruction>,
+    signers: &[&Keypair],
+    recent_blockhash: Hash,
+    transaction_cu_budget: u32,
+    instruction_padding_config: Option<&InstructionPaddingConfig>,
+    compute_unit_price: Option<u64>,
+) -> VersionedTransaction {
+    let mut compute_budget_instructions = vec![ComputeBudgetInstruction::set_compute_unit_limit(
+        transaction_cu_budget,
+    )];
+    if let Some(compute_unit_price) = compute_unit_price {
+        compute_budget_instructions.push(ComputeBudgetInstruction::set_compute_unit_price(
+            compute_unit_price,
+        ));
+    }
+    if let Some(padding_config) = instruction_padding_config {
+        compute_budget_instructions.push(
+            ComputeBudgetInstruction::set_loaded_accounts_data_size_limit(
+                padding_config.loaded_accounts_data_size_limit,
+            ),
+        );
+    }
+    instructions.splice(0..0, compute_budget_instructions);
+
+    Transaction::new_signed_with_payer(instructions, Some(tx_payer), signers, recent_blockhash)
+        .into()
+}
+
+fn create_v1_transfer_transaction(
+    tx_payer: &Pubkey,
+    instructions: &[Instruction],
+    signers: &[&Keypair],
+    recent_blockhash: Hash,
+    transaction_cu_budget: u32,
+    instruction_padding_config: Option<&InstructionPaddingConfig>,
+    compute_unit_price: Option<u64>,
+) -> VersionedTransaction {
+    let loaded_accounts_data_size_limit = instruction_padding_config
+        .map(|padding_config| padding_config.loaded_accounts_data_size_limit)
+        .unwrap_or(TRANSFER_TRANSACTION_LOADED_ACCOUNTS_DATA_SIZE);
+    let mut config = TransactionConfig::empty()
+        .with_compute_unit_limit(transaction_cu_budget)
+        .with_loaded_accounts_data_size_limit(loaded_accounts_data_size_limit);
+    if let Some(compute_unit_price) = compute_unit_price {
+        config = config.with_priority_fee(compute_unit_price);
+    }
+
+    let message =
+        V1Message::try_compile_with_config(tx_payer, instructions, recent_blockhash, config)
+            .unwrap();
+    VersionedTransaction::try_new(VersionedMessage::V1(message), signers).unwrap()
 }
 
 fn maybe_wrap_instruction(
@@ -123,7 +212,7 @@ fn maybe_wrap_instruction(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, solana_pubkey::Pubkey};
+    use {super::*, solana_message::VersionedMessage, solana_pubkey::Pubkey};
 
     #[test]
     fn test_maybe_wrap_instruction_keeps_transfer_when_disabled() {
@@ -152,5 +241,67 @@ mod tests {
 
         assert_eq!(instruction.program_id, padding_program_id);
         assert!(!instruction.data.is_empty());
+    }
+
+    #[test]
+    fn test_create_serialized_transfers_uses_legacy_by_default() {
+        let tx = create_test_transfer(None, false);
+
+        assert!(matches!(&tx.message, VersionedMessage::Legacy(_)));
+        assert_eq!(tx.message.instructions().len(), 2);
+    }
+
+    #[test]
+    fn test_create_serialized_transfers_adds_legacy_compute_unit_price() {
+        let tx = create_test_transfer(Some(1), false);
+
+        assert!(matches!(&tx.message, VersionedMessage::Legacy(_)));
+        assert_eq!(tx.message.instructions().len(), 3);
+    }
+
+    #[test]
+    fn test_create_serialized_transfers_uses_v1_when_enabled() {
+        let tx = create_test_transfer(Some(1), true);
+        let VersionedMessage::V1(message) = tx.message else {
+            panic!("expected v1 message");
+        };
+
+        assert_eq!(message.config.compute_unit_limit, Some(600));
+        assert_eq!(message.config.priority_fee, Some(1));
+        assert_eq!(
+            message.config.loaded_accounts_data_size_limit,
+            Some(TRANSFER_TRANSACTION_LOADED_ACCOUNTS_DATA_SIZE)
+        );
+        assert_eq!(message.instructions.len(), 1);
+    }
+
+    fn create_test_transfer(
+        compute_unit_price: Option<u64>,
+        use_txv1: bool,
+    ) -> VersionedTransaction {
+        let sender = Keypair::new();
+        let receiver = Keypair::new();
+        let lamports = [1];
+        let mut accounts_from = [&sender].into_iter();
+        let mut accounts_to = [&receiver].into_iter();
+        let mut lamports = lamports.iter();
+        let mut instructions = Vec::new();
+        let mut signers = Vec::new();
+
+        let wire_transaction = create_serialized_transfers(
+            &mut accounts_from,
+            &mut accounts_to,
+            &mut lamports,
+            Hash::new_unique(),
+            &mut instructions,
+            &mut signers,
+            1,
+            600,
+            None,
+            compute_unit_price,
+            use_txv1,
+        );
+
+        wincode::deserialize(&wire_transaction).unwrap()
     }
 }
