@@ -12,9 +12,12 @@ use {
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::{
         config::{RpcBlockSubscribeConfig, RpcBlockSubscribeFilter},
-        response::{RpcBlockUpdateError, transaction::versioned::VersionedTransaction},
+        response::{
+            Response, RpcBlockUpdate, RpcBlockUpdateError,
+            transaction::versioned::VersionedTransaction,
+        },
     },
-    solana_sdk_ids::system_program,
+    solana_sdk_ids::{compute_budget, system_program},
     solana_signer::Signer,
     solana_test_validator::TestValidatorGenesis,
     solana_tpu_tools_common::{
@@ -30,10 +33,12 @@ use {
     },
     std::{
         net::{IpAddr, Ipv4Addr, SocketAddr},
+        num::NonZeroU64,
         sync::Arc,
-        time::Duration,
+        time::{Duration, Instant},
     },
     tokio::runtime::Builder,
+    tokio_util::sync::CancellationToken,
 };
 
 #[test]
@@ -89,6 +94,8 @@ fn test_transactions_sending() {
     )
     .unwrap();
 
+    let cancel = CancellationToken::new();
+    let (stats_sender, stats_receiver) = tokio::sync::oneshot::channel();
     let handle = rt.spawn(async move {
         let funding_key = Keypair::new();
         let funding_pubkey = funding_key.pubkey();
@@ -100,8 +107,8 @@ fn test_transactions_sending() {
             .expect("Airdrop request should not fail.");
         wait_for_balance(rpc_client.as_ref(), &funding_pubkey, 100_000_000).await;
         let account_params = AccountParams {
-            num_payers: 16,
-            payer_account_balance: 1000,
+            num_payers: 25,
+            payer_account_balance: 1_000_000,
         };
 
         let accounts = create_ephemeral_accounts(
@@ -133,8 +140,8 @@ fn test_transactions_sending() {
             ExecutionParams {
                 staked_identity_files: vec![],
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
-                duration: Some(Duration::from_secs(5)),
-                target_tps: None,
+                duration: Some(Duration::from_secs(2)),
+                target_tps: Some(NonZeroU64::new(10).unwrap()),
                 num_max_open_connections: 1,
                 workers_pull_size: 1,
                 send_fanout: 1,
@@ -145,45 +152,46 @@ fn test_transactions_sending() {
                 },
                 leader_tracker: LeaderTracker::PinnedLeaderTracker { address: tpu_addr },
             },
+            Some(stats_sender),
+            cancel,
         )
         .await
     });
-
-    let mut num_txs = 0;
-    for _ in 0..10 {
-        receiver.try_iter().for_each(|response| {
-            if let Some(err) = response.value.err {
-                // sometimes block is not ready, see
-                // https://github.com/solana-labs/solana/issues/33462
-                assert_eq!(err, RpcBlockUpdateError::BlockStoreError);
-            }
-            if let Some(block) = response.value.block
-                && let Some(encoded_transactions) = block.transactions
-            {
-                for encoded_tx in encoded_transactions {
-                    let tx = encoded_tx.transaction.decode();
-                    // Transactions built by the bench contain:
-                    //   set_compute_unit_limit + set_compute_unit_price + transfer
-                    // for the single-instruction transfer case used here.
-                    if let Some(tx) = tx
-                        && is_transfer(&tx)
-                        && tx.message.instructions().len() == 3
-                    {
-                        num_txs += 1;
-                    }
-                }
-            }
-        });
-        std::thread::sleep(Duration::from_secs(1));
-    }
 
     rt.block_on(handle)
         .expect("Should not fail joining client task.")
         .expect("Should not fail running client.");
 
+    let client_stats = rt
+        .block_on(stats_receiver)
+        .expect("Should receive transaction send stats.");
+    let successfully_sent = client_stats
+        .send_transaction_stats
+        .iter()
+        .map(|stats| stats.to_non_atomic().successfully_sent)
+        .sum();
+    assert!(
+        successfully_sent > 0,
+        "Expected client to successfully send at least one transfer tx"
+    );
+
+    let mut num_txs = 0u64;
+    let before = Instant::now();
+    while num_txs < successfully_sent && before.elapsed() < Duration::from_secs(5) {
+        num_txs += count_transfer_txs(receiver.try_iter());
+        if num_txs < successfully_sent {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    num_txs += count_transfer_txs(receiver.try_iter());
+
+    // we cannot guarantee that all sent transactions will be included in a block within the test
+    // duration, because when transaction generator stops by duration it drops senders which leads
+    // to stopping also scheduler. So it might happen that stopped connection has some undelivered
+    // streams.
     assert!(
         num_txs > 0,
-        "Expected to receive >0 transfer txs but got {num_txs}"
+        "Expected to receive at least one transfer tx but got {num_txs}"
     );
 
     // If we don't drop the test_validator, the blocking web socket service
@@ -216,12 +224,43 @@ async fn wait_for_balance(client: &RpcClient, pubkey: &solana_pubkey::Pubkey, ta
     panic!("Airdrop balance did not reach target {target} for {pubkey}");
 }
 
+fn count_transfer_txs(responses: impl IntoIterator<Item = Response<RpcBlockUpdate>>) -> u64 {
+    let mut num_txs = 0u64;
+    for response in responses {
+        if let Some(err) = response.value.err {
+            // sometimes block is not ready, see
+            // https://github.com/solana-labs/solana/issues/33462
+            assert_eq!(err, RpcBlockUpdateError::BlockStoreError);
+        }
+        if let Some(block) = response.value.block
+            && let Some(encoded_transactions) = block.transactions
+        {
+            for encoded_tx in encoded_transactions {
+                let tx = encoded_tx.transaction.decode();
+                if let Some(tx) = tx
+                    && is_transfer(&tx)
+                {
+                    num_txs = num_txs.saturating_add(1);
+                }
+            }
+        }
+    }
+    num_txs
+}
+
 fn is_transfer(tx: &VersionedTransaction) -> bool {
     let message = &tx.message;
     let account_keys = message.static_account_keys();
+    let instructions = message.instructions();
 
-    message
-        .instructions()
-        .iter()
-        .any(|instruction| instruction.program_id(account_keys) == &system_program::id())
+    let Some((transfer_instruction, compute_budget_instructions)) = instructions.split_last()
+    else {
+        return false;
+    };
+
+    !compute_budget_instructions.is_empty()
+        && compute_budget_instructions
+            .iter()
+            .all(|instruction| instruction.program_id(account_keys) == &compute_budget::id())
+        && transfer_instruction.program_id(account_keys) == &system_program::id()
 }

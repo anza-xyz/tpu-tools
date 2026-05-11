@@ -8,7 +8,6 @@ use {
     },
     log::*,
     solana_keypair::Keypair,
-    solana_metrics::datapoint_info,
     solana_pubkey::Pubkey,
     solana_quic_definitions::{
         QUIC_MAX_STAKED_CONCURRENT_STREAMS, QUIC_MAX_UNSTAKED_CONCURRENT_STREAMS,
@@ -30,7 +29,7 @@ use {
     },
     std::{fmt::Debug, num::NonZeroU64, sync::Arc, time::Duration},
     tokio::{
-        sync::{mpsc, watch},
+        sync::{mpsc, oneshot, watch},
         task::JoinHandle,
     },
     tokio_util::sync::CancellationToken,
@@ -45,13 +44,17 @@ const WORKER_CHANNEL_SIZE: usize = 20;
 /// doesn't affect TPS.
 const MAX_RECONNECT_ATTEMPTS: usize = 5;
 
-/// How often tpu-client-next reports network metrics.
-const METRICS_REPORTING_INTERVAL: Duration = Duration::from_secs(1);
-
 /// Default number of streams per connection if stake-based computation fails.
 /// This failure happens if we use stake overrides.
 const DEFAULT_NUM_STREAMS_PER_CONNECTION: usize = 8;
 const TARGET_BATCHES_PER_SECOND: u64 = 10;
+
+pub struct RunClientStats {
+    pub send_transaction_stats: Vec<Arc<SendTransactionStats>>,
+    pub priority_fee_stats: Arc<PriorityFeeStats>,
+}
+
+pub type RunClientStatsSender = oneshot::Sender<RunClientStats>;
 
 async fn find_node_activated_stake(
     rpc_client: &Arc<RpcClient>,
@@ -123,62 +126,6 @@ where
     }
 }
 
-/// Periodically reads and resets stats from all scheduler instances, sums them,
-/// and reports the aggregate to InfluxDB under a single metric name.
-#[allow(clippy::arithmetic_side_effects)]
-async fn report_aggregated_stats(
-    all_stats: Vec<Arc<SendTransactionStats>>,
-    priority_fee_stats: Arc<PriorityFeeStats>,
-    reporting_interval: Duration,
-    cancel: CancellationToken,
-) {
-    let mut interval = tokio::time::interval(reporting_interval);
-    loop {
-        tokio::select! {
-            _ = interval.tick() => {
-                let (mut connect_error, mut connection_error, mut successfully_sent,
-                     mut congestion_events, mut write_error) = (0i64, 0i64, 0i64, 0i64, 0i64);
-                for stats in &all_stats {
-                    let view = stats.read_and_reset();
-                    connect_error += (view.connect_error_cids_exhausted
-                        + view.connect_error_other
-                        + view.connect_error_invalid_remote_address) as i64;
-                    connection_error += (view.connection_error_reset
-                        + view.connection_error_cids_exhausted
-                        + view.connection_error_timed_out
-                        + view.connection_error_application_closed
-                        + view.connection_error_transport_error
-                        + view.connection_error_version_mismatch
-                        + view.connection_error_locally_closed) as i64;
-                    successfully_sent += view.successfully_sent as i64;
-                    congestion_events += view.transport_congestion_events as i64;
-                    write_error += (view.write_error_stopped
-                        + view.write_error_closed_stream
-                        + view.write_error_connection_lost
-                        + view.write_error_zero_rtt_rejected) as i64;
-                }
-                datapoint_info!(
-                    "transaction-bench-network",
-                    ("connect_error", connect_error, i64),
-                    ("connection_error", connection_error, i64),
-                    ("successfully_sent", successfully_sent, i64),
-                    ("congestion_events", congestion_events, i64),
-                    ("write_error", write_error, i64),
-                );
-
-                let (total_priority_fees, priority_fee_tx_count) =
-                    priority_fee_stats.read_and_reset();
-                datapoint_info!(
-                    "transaction-bench-priority-fees",
-                    ("total_priority_fees", total_priority_fees, i64),
-                    ("tx_count", priority_fee_tx_count, i64),
-                );
-            }
-            _ = cancel.cancelled() => break,
-        }
-    }
-}
-
 pub async fn run_client(
     rpc_client: Arc<RpcClient>,
     websocket_url: String,
@@ -196,6 +143,8 @@ pub async fn run_client(
         priority_fee_params,
         leader_tracker,
     }: ExecutionParams,
+    stats_sender: Option<RunClientStatsSender>,
+    cancel: CancellationToken,
 ) -> Result<(), BenchClientError> {
     let validator_identities: Vec<Keypair> = staked_identity_files
         .into_iter()
@@ -300,7 +249,6 @@ pub async fn run_client(
         workers_pull_size,
     );
 
-    let cancel = CancellationToken::new();
     let transaction_generator_task_handle =
         tokio::spawn(async move { transaction_generator.run().await });
     let config = LeaderTpuCacheServiceConfig {
@@ -361,13 +309,16 @@ pub async fn run_client(
         scheduler_handles.push(scheduler_handle);
     }
 
-    // Single metrics reporter aggregating stats across all tpu-client-next instances.
-    tokio::spawn(report_aggregated_stats(
-        all_stats,
-        priority_fee_stats,
-        METRICS_REPORTING_INTERVAL,
-        cancel,
-    ));
+    if let Some(stats_sender) = stats_sender
+        && stats_sender
+            .send(RunClientStats {
+                send_transaction_stats: all_stats,
+                priority_fee_stats,
+            })
+            .is_err()
+    {
+        debug!("Stats receiver has been dropped.");
+    }
 
     join_service(transaction_generator_task_handle, "TransactionGenerator").await?;
     join_service(blockhash_task_handle, "BlockhashUpdater").await?;
