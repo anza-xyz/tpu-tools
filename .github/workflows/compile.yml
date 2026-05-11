@@ -1,10 +1,12 @@
 name: Compile
 
 on:
-  push:
-    branches:
-      - master
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
     branches:
       - master
     paths:
@@ -25,8 +27,8 @@ env:
 
 jobs:
   build:
-    name: cargo build --workspace --all-targets
-    if: github.repository == 'anza-xyz/tpu-tools'
+    if: github.event.pull_request.base.repo.full_name == 'anza-xyz/tpu-tools' && !github.event.pull_request.draft
+    name: check and test
     timeout-minutes: 60
     runs-on: ubuntu-22.04
     steps:
@@ -56,7 +58,25 @@ jobs:
         shell: bash
         run: |
           rustup show active-toolchain || rustup toolchain install
+          rustup toolchain install nightly-2026-02-28 --profile minimal --component rustfmt --component clippy
+          cargo +nightly-2026-02-28 install cargo-sort --locked
 
-      - name: Build workspace (all targets)
+      - name: Format
         shell: bash
-        run: cargo build --workspace --all-targets --locked
+        run: cargo +nightly-2026-02-28 fmt --all
+
+      - name: Sort
+        shell: bash
+        run: cargo +nightly-2026-02-28 sort --workspace
+
+      - name: Check
+        shell: bash
+        run: cargo +nightly-2026-02-28 check --locked --workspace --all-targets
+
+      - name: Clippy
+        shell: bash
+        run: cargo +nightly-2026-02-28 clippy --workspace --all-targets -- --deny=warnings --deny=clippy::default_trait_access --deny=clippy::arithmetic_side_effects --deny=clippy::manual_let_else --deny=clippy::uninlined-format-args --deny=clippy::used_underscore_binding
+
+      - name: Test
+        shell: bash
+        run: cargo test --locked --workspace --all-targets
