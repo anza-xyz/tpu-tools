@@ -310,9 +310,7 @@ pub async fn run_client(
         )
         .await?;
 
-        let stake_identity = validator_identities
-            .get(i)
-            .map(|ident| StakeIdentity::new(ident));
+        let stake_identity = validator_identities.get(i).map(StakeIdentity::new);
         let scheduler_config = ConnectionWorkersSchedulerConfig {
             bind: BindTarget::Address(bind),
             stake_identity,

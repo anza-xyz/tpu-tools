@@ -43,6 +43,7 @@ pub(crate) fn create_serialized_signed_transaction(
     wincode::serialize(&tx).expect("serialize VersionedTransaction in send_batch")
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn create_serialized_transfers<'a, S, R, L>(
     accounts_from: &mut S,
     accounts_to: &mut R,

@@ -78,24 +78,13 @@ impl TransactionGenerator {
         //TODO(klykov): extract to function
         // Validate inputs that couldn't be done in CLI due to interdependency between two CLI args.
         // Ensure CU budget is sufficient for multi-instruction transfer transactions.
-        let &SimpleTransferTxParams {
-            num_send_instructions_per_tx,
-            transfer_tx_cu_budget,
-            ..
-        } = &self.transaction_params.simple_transfer_tx_params;
-
-        let per_instruction_cu_cost = if self
+        let transfer_tx_cu_budget = self
             .transaction_params
-            .padding_params
-            .instruction_padding_data_size
-            .is_some()
-        {
-            PADDED_TRANSFER_INSTRUCTION_CU_COST
-        } else {
-            SIMPLE_TRANSFER_INSTRUCTION_CU_COST
-        };
-        let transfer_tx_min_cu_budget = COMPUTE_BUDGET_INSTRUCTION_CU_COST
-            + per_instruction_cu_cost * num_send_instructions_per_tx as u32;
+            .simple_transfer_tx_params
+            .transfer_tx_cu_budget;
+
+        let transfer_tx_min_cu_budget =
+            compute_transfer_tx_min_cu_budget(&self.transaction_params, self.compute_unit_price);
 
         if transfer_tx_cu_budget < transfer_tx_min_cu_budget {
             error!(
@@ -189,6 +178,38 @@ impl TransactionGenerator {
     }
 }
 
+#[allow(clippy::arithmetic_side_effects)]
+fn compute_transfer_tx_min_cu_budget(
+    transaction_params: &TransactionParams,
+    compute_unit_price: Option<u64>,
+) -> u32 {
+    let &SimpleTransferTxParams {
+        num_send_instructions_per_tx,
+        ..
+    } = &transaction_params.simple_transfer_tx_params;
+
+    let use_instruction_padding = transaction_params
+        .padding_params
+        .instruction_padding_data_size
+        .is_some();
+    let per_instruction_cu_cost = if use_instruction_padding {
+        PADDED_TRANSFER_INSTRUCTION_CU_COST
+    } else {
+        SIMPLE_TRANSFER_INSTRUCTION_CU_COST
+    };
+
+    // Legacy transfer transactions include explicit compute-budget instructions.
+    // V1 transfer transactions encode these settings in Message config.
+    let compute_budget_instructions_count = if transaction_params.use_txv1 {
+        0
+    } else {
+        1 + u32::from(compute_unit_price.is_some()) + u32::from(use_instruction_padding)
+    };
+
+    compute_budget_instructions_count * COMPUTE_BUDGET_INSTRUCTION_CU_COST
+        + per_instruction_cu_cost * num_send_instructions_per_tx as u32
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum TransactionType {
     Transfer,
@@ -221,7 +242,12 @@ fn compute_batch_interval(send_batch_size: usize, target_tps: NonZeroU64) -> Dur
 
 #[cfg(test)]
 mod tests {
-    use {super::compute_batch_interval, std::num::NonZeroU64, tokio::time::Duration};
+    use {
+        super::{compute_batch_interval, compute_transfer_tx_min_cu_budget},
+        crate::cli::{InstructionPaddingParams, SimpleTransferTxParams, TransactionParams},
+        std::num::NonZeroU64,
+        tokio::time::Duration,
+    };
 
     #[test]
     fn test_compute_batch_interval() {
@@ -233,5 +259,56 @@ mod tests {
             compute_batch_interval(1, NonZeroU64::new(1).unwrap()),
             Duration::from_secs(1)
         );
+    }
+
+    #[test]
+    fn test_transfer_tx_min_cu_budget_legacy_without_optional_compute_budget_instructions() {
+        let transaction_params = make_transaction_params(2, None, false);
+
+        let actual = compute_transfer_tx_min_cu_budget(&transaction_params, None);
+
+        // 1 compute-budget instruction + 2 simple transfer instructions.
+        assert_eq!(actual, 150 + 2 * 150);
+    }
+
+    #[test]
+    fn test_transfer_tx_min_cu_budget_legacy_with_price_and_padding() {
+        let transaction_params = make_transaction_params(2, Some(32), false);
+
+        let actual = compute_transfer_tx_min_cu_budget(&transaction_params, Some(1_000));
+
+        // 3 compute-budget instructions (limit + price + loaded-account-size) + 2 padded transfers.
+        assert_eq!(actual, 3 * 150 + 2 * 3_000);
+    }
+
+    #[test]
+    fn test_transfer_tx_min_cu_budget_v1_with_price_and_padding() {
+        let transaction_params = make_transaction_params(2, Some(32), true);
+
+        let actual = compute_transfer_tx_min_cu_budget(&transaction_params, Some(1_000));
+
+        // V1 configuration does not insert compute-budget instructions into the message.
+        assert_eq!(actual, 2 * 3_000);
+    }
+
+    fn make_transaction_params(
+        num_send_instructions_per_tx: usize,
+        instruction_padding_data_size: Option<u32>,
+        use_txv1: bool,
+    ) -> TransactionParams {
+        TransactionParams {
+            simple_transfer_tx_params: SimpleTransferTxParams {
+                lamports_to_transfer: 513,
+                transfer_tx_cu_budget: 600,
+                num_send_instructions_per_tx,
+                tx_batch_size: None,
+                num_conflict_groups: None,
+            },
+            padding_params: InstructionPaddingParams {
+                instruction_padding_data_size,
+                instruction_padding_program_id: None,
+            },
+            use_txv1,
+        }
     }
 }

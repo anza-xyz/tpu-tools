@@ -101,10 +101,10 @@ pub struct ExecutionParams {
     // Cannot use value_parser to read keypair file because Keypair is not Clone.
     #[clap(
         long = "staked-identity-file",
-        help = "Validator identity keypair file for staked connection. Spawns one \
-                tpu-client-next instance per occurrence. Repeat the same file to get multiple \
-                connections under one identity, or use different files for distinct stake \
-                allocations. Without this flag a single unstaked instance is used."
+        help = "Validator identity keypair file for staked connection. Spawns one tpu-client-next \
+                instance per occurrence. Repeat the same file to get multiple connections under \
+                one identity, or use different files for distinct stake allocations. Without this \
+                flag a single unstaked instance is used."
     )]
     pub staked_identity_files: Vec<PathBuf>,
 
