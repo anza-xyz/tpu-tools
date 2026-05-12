@@ -67,7 +67,7 @@ jobs:
 
       - name: Sort
         shell: bash
-        run: cargo +nightly-2026-02-28 sort --workspace
+        run: cargo +nightly-2026-02-28 sort --workspace --check
 
       - name: Check
         shell: bash
