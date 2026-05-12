@@ -63,7 +63,7 @@ jobs:
 
       - name: Format
         shell: bash
-        run: cargo +nightly-2026-02-28 fmt --all
+        run: cargo +nightly-2026-02-28 fmt --all --check
 
       - name: Sort
         shell: bash
