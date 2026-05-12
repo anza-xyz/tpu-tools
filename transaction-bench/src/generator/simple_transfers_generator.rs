@@ -18,7 +18,9 @@ pub(crate) fn generate_transfer_transaction_batch(
     TransactionParams {
         simple_transfer_tx_params,
         padding_params,
+        use_txv1,
     }: TransactionParams,
+    compute_unit_price: Option<u64>,
     send_batch_size: usize,
 ) -> JoinHandle<Vec<Vec<u8>>> {
     spawn_blocking_transaction_batch_generation("generate transfer transaction batch", move || {
@@ -26,6 +28,7 @@ pub(crate) fn generate_transfer_transaction_batch(
         let instruction_padding_config = TransactionParams {
             simple_transfer_tx_params: simple_transfer_tx_params.clone(),
             padding_params: padding_params.clone(),
+            use_txv1,
         }
         .instruction_padding_config();
 
@@ -57,6 +60,8 @@ pub(crate) fn generate_transfer_transaction_batch(
                 num_send_instructions_per_tx,
                 transfer_tx_cu_budget,
                 instruction_padding_config.as_ref(),
+                compute_unit_price,
+                use_txv1,
             );
             txs.push(tx);
             instructions.clear();

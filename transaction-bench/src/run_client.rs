@@ -182,8 +182,7 @@ pub async fn run_client(
         num_max_open_connections,
         workers_pull_size,
         send_fanout,
-        //TODO(klykov): pass to tx generator
-        compute_unit_price: _,
+        compute_unit_price,
         leader_tracker,
     }: ExecutionParams,
 ) -> Result<(), BenchClientError> {
@@ -278,6 +277,7 @@ pub async fn run_client(
         blockhash_receiver,
         transaction_senders,
         transaction_params,
+        compute_unit_price,
         send_batch_size,
         duration,
         target_tps,
