@@ -16,7 +16,6 @@ use {
     tonic::{Status, async_trait},
     yellowstone_grpc_client::{
         ClientTlsConfig, GeyserGrpcBuilderError, GeyserGrpcClient, GeyserGrpcClientError,
-        Interceptor,
     },
     yellowstone_grpc_proto::{
         geyser::{
@@ -192,7 +191,7 @@ pub(crate) async fn create_geyser_client(
         max_decoding_message_size,
         timeout,
     }: ClientConfig,
-) -> Result<GeyserGrpcClient<impl Interceptor>, YellowstoneError> {
+) -> Result<GeyserGrpcClient, YellowstoneError> {
     let mut tls_config = ClientTlsConfig::new().with_native_roots();
     if let Some(path) = ca_certificate {
         let bytes = fs::read(path).await?;
