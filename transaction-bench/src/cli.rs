@@ -62,6 +62,14 @@ pub struct ClientCliParameters {
     )]
     pub validate_accounts: bool,
 
+    #[clap(
+        long,
+        hide = true,
+        help = "Use the internal mock RpcClient for local stress testing against a mock QUIC \
+                server. Intended for testing only."
+    )]
+    pub mock_rpc: bool,
+
     #[clap(subcommand)]
     pub command: Command,
 }
@@ -430,6 +438,7 @@ mod tests {
             },
             authority: Some(PathBuf::from(&keypair_file_name)),
             validate_accounts: false,
+            mock_rpc: false,
         };
         let actual = ClientCliParameters::try_parse_from(args).unwrap();
 
@@ -483,6 +492,7 @@ mod tests {
             },
             authority: Some(PathBuf::from(&keypair_file_name)),
             validate_accounts: false,
+            mock_rpc: false,
         };
         let cli = ClientCliParameters::try_parse_from(args);
         assert!(cli.is_ok(), "Unexpected error {:?}", cli.err());
@@ -610,6 +620,7 @@ mod tests {
             }),
             authority: Some(PathBuf::from(&keypair_file_name)),
             validate_accounts: false,
+            mock_rpc: false,
         };
         let cli = ClientCliParameters::try_parse_from(args);
         assert!(cli.is_ok(), "Unexpected error {:?}", cli.err());
@@ -677,6 +688,27 @@ mod tests {
         // Scheduling with random max = 0 must be rejected: silently no-op
         // was the bug, see PR #56 review.
         assert!(PriorityFeeMode::try_from(&params(0, Some(5))).is_err());
+    }
+
+    #[test]
+    fn test_mock_rpc_flag() {
+        let keypair_file_name = "/home/testUser/masterKey.json";
+
+        let mut args = vec![
+            "test",
+            "--mock-rpc",
+            "-ul",
+            "--authority",
+            keypair_file_name,
+            "run",
+        ];
+        let (account_args, _account_params) = get_common_account_params();
+        args.extend(account_args.iter());
+        let (exec_args, _execution_params) = get_common_execution_params(keypair_file_name);
+        args.extend(exec_args.iter());
+
+        let actual = ClientCliParameters::try_parse_from(args).unwrap();
+        assert!(actual.mock_rpc);
     }
 
     /// Check that cannot use `write` subcommand together with parameters from `TransactionParams`
