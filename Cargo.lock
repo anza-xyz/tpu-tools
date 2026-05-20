@@ -8734,7 +8734,6 @@ dependencies = [
  "tokio-util 0.7.18",
  "tonic 0.14.2",
  "tools-common",
- "tpu-client-next-extensions",
  "wincode",
  "yellowstone-grpc-client",
  "yellowstone-grpc-proto",
@@ -11423,6 +11422,7 @@ dependencies = [
  "chrono",
  "clap 4.5.53",
  "futures 0.3.32",
+ "futures-util",
  "log",
  "rand 0.8.5",
  "serde",
@@ -11448,7 +11448,8 @@ dependencies = [
  "tokio",
  "tokio-util 0.7.18",
  "tonic 0.14.2",
- "tpu-client-next-extensions",
+ "yellowstone-grpc-client",
+ "yellowstone-grpc-proto",
 ]
 
 [[package]]
@@ -11524,24 +11525,6 @@ name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
-
-[[package]]
-name = "tpu-client-next-extensions"
-version = "1.0.0"
-dependencies = [
- "futures 0.3.32",
- "futures-util",
- "log",
- "solana-rpc-client",
- "solana-tpu-client-next",
- "solana-transaction-status",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util 0.7.18",
- "tonic 0.14.2",
- "yellowstone-grpc-client",
- "yellowstone-grpc-proto",
-]
 
 [[package]]
 name = "tracing"

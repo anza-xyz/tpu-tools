@@ -55,7 +55,6 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tonic = { workspace = true }
 tools-common = { workspace = true }
-tpu-client-next-extensions = { workspace = true }
 wincode = { workspace = true }
 yellowstone-grpc-client = { workspace = true }
 yellowstone-grpc-proto = { workspace = true }

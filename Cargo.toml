@@ -1,10 +1,5 @@
 [workspace]
-members = [
-    "rate-latency-tool",
-    "tools-common",
-    "tpu-client-next-extensions",
-    "transaction-bench",
-]
+members = ["rate-latency-tool", "tools-common", "transaction-bench"]
 
 resolver = "2"
 
@@ -92,7 +87,6 @@ tokio-util = "0.7.18"
 # the same as used by yellowstone-grpc-client
 tonic = "0.14.2"
 tools-common = { path = "tools-common" }
-tpu-client-next-extensions = { path = "tpu-client-next-extensions" }
 tracing = "0.1"
 wincode = "=0.4.9"
 # Use updated version of yellowstone-grpc to match Solana version
