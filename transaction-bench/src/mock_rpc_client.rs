@@ -14,7 +14,6 @@ use {
         response::{Response, RpcBlockhash, RpcResponseContext},
     },
     solana_sha256_hasher::hash,
-    solana_sdk_ids::system_program,
     std::sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -72,14 +71,14 @@ impl RpcSender for TransactionBenchMockSender {
                     slot: 1,
                     api_version: None,
                 },
-                value: {
+                value: json!({
                     "data": ["", "base64"],
                     "executable": false,
                     "lamports": 1,
-                    "owner": system_program::id().to_string(),
+                    "owner": "11111111111111111111111111111111",
                     "rentEpoch": 0,
                     "space": 0,
-                },
+                }),
             }));
         }
 
@@ -93,9 +92,7 @@ impl RpcSender for TransactionBenchMockSender {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-    };
+    use super::*;
 
     #[tokio::test]
     async fn test_mock_rpc_client_returns_changing_blockhashes() {
@@ -111,7 +108,9 @@ mod tests {
     async fn test_mock_rpc_client_delegates_other_requests() {
         let rpc_client = new_mock_rpc_client(CommitmentConfig::confirmed());
 
-        let balance = rpc_client.get_balance(&solana_pubkey::Pubkey::new_unique()).await;
+        let balance = rpc_client
+            .get_balance(&solana_pubkey::Pubkey::new_unique())
+            .await;
 
         assert!(balance.is_ok());
     }

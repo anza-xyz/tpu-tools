@@ -170,3 +170,101 @@ fn create_mock_accounts(num_payers: usize) -> AccountsFile {
         payers: (0..num_payers).map(|_| Keypair::new()).collect(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        solana_commitment_config::CommitmentConfig,
+        solana_transaction_bench::cli::{
+            ExecutionParams, InstructionPaddingParams, PriorityFeeParams, SimpleTransferTxParams,
+            TransactionParams,
+        },
+        std::net::{IpAddr, Ipv4Addr, SocketAddr},
+        tools_common::cli::{AccountParams, WriteAccounts},
+    };
+
+    fn test_run_parameters(leader_tracker: LeaderTracker) -> ClientCliParameters {
+        ClientCliParameters {
+            json_rpc_url: "http://localhost:8899".to_string(),
+            commitment_config: CommitmentConfig::confirmed(),
+            authority: None,
+            validate_accounts: false,
+            mock_rpc: true,
+            command: Command::Run {
+                account_params: AccountParams {
+                    num_payers: 4,
+                    payer_account_balance: 1_000,
+                },
+                execution_params: ExecutionParams {
+                    staked_identity_files: vec![],
+                    bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                    duration: None,
+                    target_tps: None,
+                    num_max_open_connections: 1,
+                    workers_pull_size: 1,
+                    send_fanout: 1,
+                    compute_unit_price: None,
+                    priority_fee_params: PriorityFeeParams {
+                        random_compute_unit_price_max: 0,
+                        priority_fee_schedule_period_ms: None,
+                    },
+                    leader_tracker,
+                },
+                transaction_params: TransactionParams {
+                    simple_transfer_tx_params: SimpleTransferTxParams {
+                        lamports_to_transfer: 513,
+                        transfer_tx_cu_budget: 600,
+                        num_send_instructions_per_tx: 1,
+                        tx_batch_size: None,
+                        num_conflict_groups: None,
+                    },
+                    padding_params: InstructionPaddingParams {
+                        instruction_padding_data_size: None,
+                        instruction_padding_program_id: None,
+                    },
+                    use_txv1: false,
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn test_mock_rpc_requires_pinned_leader_tracker() {
+        let parameters = test_run_parameters(LeaderTracker::WsLeaderTracker);
+
+        let err = validate_mock_rpc_usage(&parameters)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("pinned-leader-tracker"));
+    }
+
+    #[test]
+    fn test_mock_rpc_rejects_write_accounts() {
+        let parameters = ClientCliParameters {
+            json_rpc_url: "http://localhost:8899".to_string(),
+            commitment_config: CommitmentConfig::confirmed(),
+            authority: None,
+            validate_accounts: false,
+            mock_rpc: true,
+            command: Command::WriteAccounts(WriteAccounts {
+                accounts_file: "accounts.json".into(),
+                account_params: AccountParams {
+                    num_payers: 4,
+                    payer_account_balance: 1_000,
+                },
+            }),
+        };
+
+        let err = validate_mock_rpc_usage(&parameters)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("write-accounts"));
+    }
+
+    #[test]
+    fn test_create_mock_accounts_generates_requested_number_of_payers() {
+        let accounts = create_mock_accounts(3);
+        assert_eq!(accounts.payers.len(), 3);
+    }
+}
