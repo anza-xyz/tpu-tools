@@ -8727,14 +8727,13 @@ dependencies = [
  "solana-time-utils",
  "solana-tpu-client",
  "solana-tpu-client-next",
+ "solana-tpu-tools-common",
  "solana-transaction 4.0.0",
  "spl-memo-interface",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util 0.7.18",
  "tonic 0.14.2",
- "tools-common",
- "tpu-client-next-extensions",
  "wincode",
  "yellowstone-grpc-client",
  "yellowstone-grpc-proto",
@@ -9914,6 +9913,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-tpu-tools-common"
+version = "1.0.0"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "bincode",
+ "chrono",
+ "clap 4.5.53",
+ "futures 0.3.32",
+ "futures-util",
+ "log",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "solana-clap-v3-utils",
+ "solana-clock",
+ "solana-commitment-config",
+ "solana-connection-cache",
+ "solana-hash 4.2.0",
+ "solana-instruction",
+ "solana-keypair",
+ "solana-native-token",
+ "solana-pubkey 4.1.0",
+ "solana-rpc-client",
+ "solana-rpc-client-api",
+ "solana-sdk-ids",
+ "solana-sha256-hasher",
+ "solana-signer",
+ "solana-system-interface 3.0.0",
+ "solana-tpu-client",
+ "solana-tpu-client-next",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util 0.7.18",
+ "tonic 0.14.2",
+ "yellowstone-grpc-client",
+ "yellowstone-grpc-proto",
+]
+
+[[package]]
 name = "solana-transaction"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10000,13 +10039,13 @@ dependencies = [
  "solana-test-validator",
  "solana-time-utils",
  "solana-tpu-client-next",
+ "solana-tpu-tools-common",
  "solana-transaction 4.0.0",
  "spl-instruction-padding-interface",
  "thiserror 2.0.18",
  "tikv-jemallocator",
  "tokio",
  "tokio-util 0.7.18",
- "tools-common",
  "wincode",
 ]
 
@@ -11414,44 +11453,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tools-common"
-version = "1.0.0"
-dependencies = [
- "async-stream",
- "async-trait",
- "bincode",
- "chrono",
- "clap 4.5.53",
- "futures 0.3.32",
- "log",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "solana-clap-v3-utils",
- "solana-clock",
- "solana-commitment-config",
- "solana-connection-cache",
- "solana-hash 4.2.0",
- "solana-instruction",
- "solana-keypair",
- "solana-native-token",
- "solana-pubkey 4.1.0",
- "solana-rpc-client",
- "solana-rpc-client-api",
- "solana-sdk-ids",
- "solana-sha256-hasher",
- "solana-signer",
- "solana-system-interface 3.0.0",
- "solana-tpu-client",
- "solana-tpu-client-next",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util 0.7.18",
- "tonic 0.14.2",
- "tpu-client-next-extensions",
-]
-
-[[package]]
 name = "tower"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11524,24 +11525,6 @@ name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
-
-[[package]]
-name = "tpu-client-next-extensions"
-version = "1.0.0"
-dependencies = [
- "futures 0.3.32",
- "futures-util",
- "log",
- "solana-rpc-client",
- "solana-tpu-client-next",
- "solana-transaction-status",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util 0.7.18",
- "tonic 0.14.2",
- "yellowstone-grpc-client",
- "yellowstone-grpc-proto",
-]
 
 [[package]]
 name = "tracing"

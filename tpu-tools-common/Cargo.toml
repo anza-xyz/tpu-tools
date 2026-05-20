@@ -1,5 +1,5 @@
 [package]
-name = "tools-common"
+name = "solana-tpu-tools-common"
 version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }
@@ -16,6 +16,7 @@ async-trait = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["cargo", "derive"] }
 futures = { workspace = true }
+futures-util = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -43,7 +44,8 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tonic = { workspace = true }
-tpu-client-next-extensions = { workspace = true }
+yellowstone-grpc-client = { workspace = true }
+yellowstone-grpc-proto = { workspace = true }
 
 [dev-dependencies]
 # Using bincode since serializing txns isn't compatible with wincode

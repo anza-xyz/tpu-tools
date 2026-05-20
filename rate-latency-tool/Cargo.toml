@@ -48,14 +48,13 @@ solana-system-interface = { workspace = true }
 solana-time-utils = { workspace = true }
 solana-tpu-client = { workspace = true }
 solana-tpu-client-next = { workspace = true, features = ["metrics", "agave-unstable-api", "websocket-node-address-service"] }
+solana-tpu-tools-common = { workspace = true }
 solana-transaction = { workspace = true }
 spl-memo-interface = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tonic = { workspace = true }
-tools-common = { workspace = true }
-tpu-client-next-extensions = { workspace = true }
 wincode = { workspace = true }
 yellowstone-grpc-client = { workspace = true }
 yellowstone-grpc-proto = { workspace = true }

@@ -4,6 +4,9 @@ use {
         custom_geyser_node_address_service::{
             CustomGeyserNodeAddressService, Error as CustomGeyserNodeAddressServiceError,
         },
+        yellowstone_leader_tracker::{
+            Error as YellowstoneNodeAddressServiceError, YellowstoneNodeAddressService,
+        },
     },
     async_trait::async_trait,
     log::{debug, error},
@@ -27,9 +30,6 @@ use {
     },
     thiserror::Error,
     tokio_util::sync::CancellationToken,
-    tpu_client_next_extensions::yellowstone_leader_tracker::{
-        Error as YellowstoneNodeAddressServiceError, YellowstoneNodeAddressService,
-    },
 };
 
 pub trait LeaderSlotEstimator {

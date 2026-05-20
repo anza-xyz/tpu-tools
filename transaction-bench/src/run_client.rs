@@ -24,16 +24,16 @@ use {
         },
         node_address_service::LeaderTpuCacheServiceConfig,
     },
+    solana_tpu_tools_common::{
+        accounts_file::AccountsFile, blockhash_updater::BlockhashUpdater,
+        leader_updater::create_leader_updater,
+    },
     std::{fmt::Debug, num::NonZeroU64, sync::Arc, time::Duration},
     tokio::{
         sync::{mpsc, watch},
         task::JoinHandle,
     },
     tokio_util::sync::CancellationToken,
-    tools_common::{
-        accounts_file::AccountsFile, blockhash_updater::BlockhashUpdater,
-        leader_updater::create_leader_updater,
-    },
 };
 
 const GENERATOR_CHANNEL_SIZE: usize = 32;
