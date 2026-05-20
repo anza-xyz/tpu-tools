@@ -17,6 +17,10 @@ use {
     solana_sdk_ids::system_program,
     solana_signer::Signer,
     solana_test_validator::TestValidatorGenesis,
+    solana_tpu_tools_common::{
+        accounts_file::create_ephemeral_accounts,
+        cli::{AccountParams, LeaderTracker},
+    },
     solana_transaction_bench::{
         cli::{
             ExecutionParams, InstructionPaddingParams, PriorityFeeParams, SimpleTransferTxParams,
@@ -30,10 +34,6 @@ use {
         time::Duration,
     },
     tokio::runtime::Builder,
-    tools_common::{
-        accounts_file::create_ephemeral_accounts,
-        cli::{AccountParams, LeaderTracker},
-    },
 };
 
 #[test]

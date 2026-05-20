@@ -10,11 +10,11 @@ use {
     },
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_signer::{EncodableKey, Signer},
-    std::sync::Arc,
-    tokio_util::sync::CancellationToken,
-    tools_common::accounts_file::{
+    solana_tpu_tools_common::accounts_file::{
         create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
     },
+    std::sync::Arc,
+    tokio_util::sync::CancellationToken,
 };
 
 fn main() {

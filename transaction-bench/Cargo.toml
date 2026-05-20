@@ -48,12 +48,12 @@ solana-streamer = { workspace = true }
 solana-system-interface = { workspace = true }
 solana-time-utils = { workspace = true }
 solana-tpu-client-next = { workspace = true }
+solana-tpu-tools-common = { workspace = true }
 solana-transaction = { workspace = true }
 spl-instruction-padding-interface = "=1.0.0"
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
-tools-common = { workspace = true }
 
 [dev-dependencies]
 agave-logger = { workspace = true }

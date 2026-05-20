@@ -5,15 +5,15 @@ use {
     solana_keypair::Keypair,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_signer::{EncodableKey, Signer},
+    solana_tpu_tools_common::accounts_file::{
+        create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
+    },
     solana_transaction_bench::{
         cli::{ClientCliParameters, Command, build_cli_parameters},
         error::BenchClientError,
         run_client::run_client,
     },
     std::sync::Arc,
-    tools_common::accounts_file::{
-        create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
-    },
 };
 
 #[cfg(not(any(target_env = "msvc", target_os = "freebsd")))]

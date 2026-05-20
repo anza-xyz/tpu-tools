@@ -9,10 +9,10 @@ use {
         transaction_batch::TransactionBatch,
         workers_cache::{WorkersCache, WorkersCacheError, shutdown_worker},
     },
+    solana_tpu_tools_common::leader_updater::LeaderUpdaterWithSlot,
     std::{sync::Arc, time::Duration},
     tokio::time::interval,
     tokio_util::sync::CancellationToken,
-    tools_common::leader_updater::LeaderUpdaterWithSlot,
 };
 
 pub async fn run_rate_latency_tool_scheduler<F, S>(

@@ -9,6 +9,7 @@ use {
     solana_hash::Hash,
     solana_measure::measure::Measure,
     solana_tpu_client_next::transaction_batch::TransactionBatch,
+    solana_tpu_tools_common::accounts_file::AccountsFile,
     std::{num::NonZeroU64, sync::Arc},
     thiserror::Error,
     tokio::{
@@ -16,7 +17,6 @@ use {
         task::JoinSet,
         time::{Duration, Instant},
     },
-    tools_common::accounts_file::AccountsFile,
 };
 
 const COMPUTE_BUDGET_INSTRUCTION_CU_COST: u32 = 150;

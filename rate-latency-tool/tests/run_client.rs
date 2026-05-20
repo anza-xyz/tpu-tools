@@ -8,7 +8,7 @@ use {
     solana_net_utils::SocketAddrSpace,
     solana_pubsub_client::pubsub_client::PubsubClient,
     solana_rate_latency_tool::{
-        cli::{AccountParams, ExecutionParams, LeaderTracker, TxAnalysisParams},
+        cli::{ExecutionParams, TxAnalysisParams},
         run_client::run_client,
     },
     solana_rent::Rent,
@@ -20,6 +20,10 @@ use {
     },
     solana_signer::Signer,
     solana_test_validator::TestValidatorGenesis,
+    solana_tpu_tools_common::{
+        accounts_file::create_ephemeral_accounts,
+        cli::{AccountParams, LeaderTracker},
+    },
     spl_memo_interface::v3::id as spl_memo_id,
     std::{
         net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -28,7 +32,6 @@ use {
     },
     tokio::runtime::Builder,
     tokio_util::sync::CancellationToken,
-    tools_common::accounts_file::create_ephemeral_accounts,
 };
 
 #[test]

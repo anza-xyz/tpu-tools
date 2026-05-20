@@ -8727,13 +8727,13 @@ dependencies = [
  "solana-time-utils",
  "solana-tpu-client",
  "solana-tpu-client-next",
+ "solana-tpu-tools-common",
  "solana-transaction 4.0.0",
  "spl-memo-interface",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util 0.7.18",
  "tonic 0.14.2",
- "tools-common",
  "wincode",
  "yellowstone-grpc-client",
  "yellowstone-grpc-proto",
@@ -9913,6 +9913,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-tpu-tools-common"
+version = "1.0.0"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "bincode",
+ "chrono",
+ "clap 4.5.53",
+ "futures 0.3.32",
+ "futures-util",
+ "log",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "solana-clap-v3-utils",
+ "solana-clock",
+ "solana-commitment-config",
+ "solana-connection-cache",
+ "solana-hash 4.2.0",
+ "solana-instruction",
+ "solana-keypair",
+ "solana-native-token",
+ "solana-pubkey 4.1.0",
+ "solana-rpc-client",
+ "solana-rpc-client-api",
+ "solana-sdk-ids",
+ "solana-sha256-hasher",
+ "solana-signer",
+ "solana-system-interface 3.0.0",
+ "solana-tpu-client",
+ "solana-tpu-client-next",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util 0.7.18",
+ "tonic 0.14.2",
+ "yellowstone-grpc-client",
+ "yellowstone-grpc-proto",
+]
+
+[[package]]
 name = "solana-transaction"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9999,13 +10039,13 @@ dependencies = [
  "solana-test-validator",
  "solana-time-utils",
  "solana-tpu-client-next",
+ "solana-tpu-tools-common",
  "solana-transaction 4.0.0",
  "spl-instruction-padding-interface",
  "thiserror 2.0.18",
  "tikv-jemallocator",
  "tokio",
  "tokio-util 0.7.18",
- "tools-common",
  "wincode",
 ]
 
@@ -11410,46 +11450,6 @@ dependencies = [
  "syn 2.0.117",
  "tempfile",
  "tonic-build 0.14.2",
-]
-
-[[package]]
-name = "tools-common"
-version = "1.0.0"
-dependencies = [
- "async-stream",
- "async-trait",
- "bincode",
- "chrono",
- "clap 4.5.53",
- "futures 0.3.32",
- "futures-util",
- "log",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "solana-clap-v3-utils",
- "solana-clock",
- "solana-commitment-config",
- "solana-connection-cache",
- "solana-hash 4.2.0",
- "solana-instruction",
- "solana-keypair",
- "solana-native-token",
- "solana-pubkey 4.1.0",
- "solana-rpc-client",
- "solana-rpc-client-api",
- "solana-sdk-ids",
- "solana-sha256-hasher",
- "solana-signer",
- "solana-system-interface 3.0.0",
- "solana-tpu-client",
- "solana-tpu-client-next",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util 0.7.18",
- "tonic 0.14.2",
- "yellowstone-grpc-client",
- "yellowstone-grpc-proto",
 ]
 
 [[package]]
