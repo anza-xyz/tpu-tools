@@ -1,5 +1,7 @@
-//! Create accounts which are later employed to create transactions.
-//! Using RpcClient for simplicity.
+//! RPC-backed payer account creation for TPU tools.
+//!
+//! This module creates funded payer accounts that transaction generators can
+//! rotate through to avoid introducing unnecessary account contention.
 #![allow(clippy::arithmetic_side_effects)]
 use {
     crate::{
@@ -42,16 +44,24 @@ const MAX_CONTINUOUS_FAILED_ATTEMPTS: usize = 100;
 
 #[derive(Error, Debug)]
 pub enum Error {
+    /// RPC client request failed.
     #[error(transparent)]
     ClientError(#[from] ClientError),
 
+    /// The authority account could not be funded to the required balance.
     #[error("Failed to airdrop")]
     AirdropFailure,
 
+    /// Account creation did not produce the requested number of payer accounts.
     #[error("Failed to create account")]
     CreateAccountFailure,
 }
 
+/// Creates funded payer accounts through a Solana RPC endpoint.
+///
+/// The creator checks that the authority has enough lamports to fund the
+/// requested accounts, requests an airdrop when needed, then sends batched
+/// `create_account` transactions.
 pub struct AccountsCreator {
     rpc_client: Arc<RpcClient>,
     authority: Keypair,
@@ -60,6 +70,10 @@ pub struct AccountsCreator {
 }
 
 impl AccountsCreator {
+    /// Creates a new account creator.
+    ///
+    /// `payer_account_balance_lamports` is the target balance for each created
+    /// payer account.
     pub fn new(
         rpc_client: Arc<RpcClient>,
         authority: Keypair,
@@ -74,6 +88,11 @@ impl AccountsCreator {
         }
     }
 
+    /// Creates all requested payer accounts.
+    ///
+    /// On partial failure, created accounts are written to an
+    /// `accounts-dump-*.json` file in the current directory before returning an
+    /// error.
     pub async fn create(&self) -> Result<AccountsFile, Error> {
         self.ensure_authority_balance().await?;
         let payers = self.create_payers().await;

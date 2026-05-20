@@ -1,3 +1,8 @@
+//! Shared command-line argument types and parsers.
+//!
+//! These types are flattened into the TPU tool CLIs so both tools expose
+//! consistent account, URL, duration, and leader-tracking options.
+
 use {
     clap::{Args, Subcommand},
     solana_clap_v3_utils::{
@@ -10,21 +15,26 @@ use {
 
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
 #[clap(rename_all = "kebab-case")]
+/// Leader tracking mode selected from the command line.
 pub enum LeaderTracker {
+    /// Send to a fixed TPU address instead of tracking cluster leaders.
     #[clap(
         about = "Use pinned address to send transactions to, which means we are not interested in \
                  leader slot updates."
     )]
     PinnedLeaderTracker { address: SocketAddr },
 
+    /// Use the legacy Solana websocket TPU leader service.
     #[clap(
         about = "Use old ws tracking code for slot updates. WS url is generated from the RPC url."
     )]
     LegacyLeaderTracker,
 
+    /// Use the `solana-tpu-client-next` websocket node-address service.
     #[clap(about = "Use ws for slot updates. WS url is generated from the RPC url.")]
     WsLeaderTracker,
 
+    /// Use Yellowstone gRPC slot updates.
     #[clap(about = "Use yellowstone grpc for slot updates instead of ws.")]
     YellowstoneLeaderTracker {
         /// gRPC endpoint URL (positional argument)
@@ -33,10 +43,12 @@ pub enum LeaderTracker {
         token: Option<String>,
     },
 
+    /// Use a custom UDP/Geyser slot updater.
     #[clap(about = "Use custom slot updater geyser plugin which sends slot updates over UDP.")]
     CustomLeaderTracker { bind_address: SocketAddr },
 }
 
+/// Common payer account creation parameters.
 #[derive(Args, Copy, Clone, Debug, PartialEq, Eq)]
 #[clap(rename_all = "kebab-case")]
 pub struct AccountParams {
@@ -57,6 +69,7 @@ pub struct AccountParams {
     pub payer_account_balance: u64,
 }
 
+/// Parameters for creating and writing payer accounts to a file.
 #[derive(Args, Debug, PartialEq, Eq, Clone)]
 #[clap(rename_all = "kebab-case")]
 pub struct WriteAccounts {
@@ -67,6 +80,7 @@ pub struct WriteAccounts {
     pub account_params: AccountParams,
 }
 
+/// Parameters for reading payer accounts from a file.
 #[derive(Args, Debug, PartialEq, Eq, Clone)]
 #[clap(rename_all = "kebab-case")]
 pub struct ReadAccounts {
@@ -74,6 +88,7 @@ pub struct ReadAccounts {
     pub accounts_file: PathBuf,
 }
 
+/// Parses an RPC URL or Solana moniker and normalizes monikers to URLs.
 pub fn parse_and_normalize_url(addr: &str) -> Result<String, String> {
     match parse_url_or_moniker(addr) {
         Ok(parsed) => Ok(normalize_to_url_if_moniker(&parsed)),
@@ -81,12 +96,14 @@ pub fn parse_and_normalize_url(addr: &str) -> Result<String, String> {
     }
 }
 
+/// Parses a duration in seconds.
 pub fn parse_duration_sec(s: &str) -> Result<Duration, &'static str> {
     s.parse::<u64>()
         .map(Duration::from_secs)
         .map_err(|_| "failed to parse duration in seconds")
 }
 
+/// Parses a duration in milliseconds.
 pub fn parse_duration_ms(s: &str) -> Result<Duration, &'static str> {
     s.parse::<u64>()
         .map(Duration::from_millis)

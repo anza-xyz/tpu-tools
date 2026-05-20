@@ -1,3 +1,8 @@
+//! Background blockhash refresh for transaction generators.
+//!
+//! The updater polls RPC for the latest blockhash and sends changes through a
+//! [`tokio::sync::watch`] channel.
+
 use {
     log::*,
     solana_hash::Hash,
@@ -36,10 +41,16 @@ impl Default for BlockhashUpdaterConfig {
 
 #[derive(Error, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum BlockhashUpdaterError {
+    /// The blockhash did not change within the configured stuck interval.
     #[error("Blockhash is stuck.")]
     BlockhashStuck,
 }
 
+/// Polls RPC for fresh blockhashes and publishes them to a watch channel.
+///
+/// The updater exits when all receivers for the watch channel have been
+/// dropped, or returns [`BlockhashUpdaterError::BlockhashStuck`] if RPC keeps
+/// failing or returns the same blockhash for too long.
 pub struct BlockhashUpdater {
     rpc_client: Arc<RpcClient>,
     sender: watch::Sender<Hash>,
@@ -48,6 +59,7 @@ pub struct BlockhashUpdater {
 }
 
 impl BlockhashUpdater {
+    /// Creates a blockhash updater using the default polling intervals.
     pub fn new(rpc_client: Arc<RpcClient>, sender: watch::Sender<Hash>) -> Self {
         Self {
             rpc_client,
@@ -71,6 +83,8 @@ impl BlockhashUpdater {
         }
     }
 
+    /// Runs the updater until the watch channel is closed or the blockhash is
+    /// considered stuck.
     pub async fn run(mut self) -> Result<(), BlockhashUpdaterError> {
         let mut blockhash_last_updated = Instant::now();
         let mut last_error_log = Instant::now();

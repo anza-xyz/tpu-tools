@@ -1,4 +1,7 @@
-//! Structure used for serializing and deserializing created accounts.
+//! Account file helpers for TPU tools.
+//!
+//! Account files store payer keypairs that can be reused between benchmark
+//! runs, avoiding repeated account creation on public clusters.
 use {
     crate::accounts_creator::{AccountsCreator, Error as AccountsCreatorError},
     log::error,
@@ -14,22 +17,32 @@ use {
 
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Payer account creation failed.
     #[error(transparent)]
     AccountsCreatorError(#[from] AccountsCreatorError),
 
+    /// A keypair file could not be read.
     #[error("Failed to read keypair file")]
     KeypairReadFailure,
 
+    /// Created or loaded payer accounts did not match the requested count or
+    /// balance.
     #[error("Accounts validation failed")]
     AccountsValidationFailure,
 
+    /// The requested validator identity was not found among staked nodes.
     #[error("Could not find validator identity among staked nodes")]
     FindValidatorIdentityFailure,
 
+    /// RPC client request failed.
     #[error(transparent)]
     RpcClientError(#[from] RpcClientError),
 }
 
+/// Payer accounts used by TPU tools.
+///
+/// Multiple payers are used so generated transactions can rotate accounts and
+/// reduce account-in-use conflicts.
 #[derive(Default, Debug, PartialEq)]
 pub struct AccountsFile {
     /// Accounts used to pay for transactions.
@@ -37,6 +50,11 @@ pub struct AccountsFile {
     pub payers: Vec<Keypair>,
 }
 
+/// Reads payer accounts from a JSON account file.
+///
+/// The file format matches the JSON produced by [`write_accounts_file`].
+/// This function panics with path and parse context if the file cannot be read
+/// or decoded.
 pub fn read_accounts_file(path: PathBuf) -> AccountsFile {
     let file_content = std::fs::read_to_string(&path).unwrap_or_else(|err| {
         panic!("Failed to read the accounts file.\nPath: {path:?}\nError: {err}")
@@ -51,6 +69,10 @@ pub fn read_accounts_file(path: PathBuf) -> AccountsFile {
         .into()
 }
 
+/// Writes payer accounts to a JSON account file.
+///
+/// This function panics with path context if the file cannot be created or
+/// written.
 pub fn write_accounts_file(path: PathBuf, accounts: AccountsFile) {
     let accounts_file_raw: AccountsFileRaw = accounts.into();
     let file_content = serde_json::to_string(&accounts_file_raw)
@@ -67,6 +89,10 @@ pub fn write_accounts_file(path: PathBuf, accounts: AccountsFile) {
         });
 }
 
+/// Creates payer accounts for a single run without saving them.
+///
+/// When `validate_accounts` is true, the created payer count and balances are
+/// checked through RPC before returning.
 pub async fn create_ephemeral_accounts(
     rpc_client: Arc<RpcClient>,
     authority: Keypair,
@@ -96,6 +122,10 @@ pub async fn create_ephemeral_accounts(
     Ok(accounts)
 }
 
+/// Creates payer accounts and persists them to an account file.
+///
+/// This is useful for public clusters where repeated account creation is slow
+/// or expensive.
 pub async fn create_file_persisted_accounts(
     rpc_client: Arc<RpcClient>,
     authority: Keypair,

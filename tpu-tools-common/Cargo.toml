@@ -5,7 +5,12 @@ authors = { workspace = true }
 edition = { workspace = true }
 homepage = { workspace = true }
 repository = { workspace = true }
+documentation = "https://docs.rs/solana-tpu-tools-common"
 license = { workspace = true }
+description = "Shared Solana TPU tooling for account setup, blockhash updates, and leader tracking."
+readme = "README.md"
+keywords = ["solana", "tpu", "benchmark"]
+categories = ["command-line-utilities", "development-tools"]
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

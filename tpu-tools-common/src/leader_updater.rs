@@ -1,3 +1,8 @@
+//! Leader updater construction for TPU tools.
+//!
+//! The factory in this module adapts command-line leader tracker selection into
+//! `solana-tpu-client-next` leader updater implementations.
+
 use {
     crate::{
         cli::LeaderTracker,
@@ -32,36 +37,59 @@ use {
     tokio_util::sync::CancellationToken,
 };
 
+/// Provides the current slot estimate alongside upcoming leader addresses.
 pub trait LeaderSlotEstimator {
+    /// Returns the best available current slot estimate.
     fn get_current_slot(&mut self) -> Slot;
 }
 
+/// Leader updater trait object used by TPU tools.
+///
+/// This combines `solana-tpu-client-next` leader address lookup with a current
+/// slot estimate.
 pub trait LeaderUpdaterWithSlot: LeaderUpdater + LeaderSlotEstimator {}
 impl<T> LeaderUpdaterWithSlot for T where T: LeaderUpdater + LeaderSlotEstimator {}
 
+/// Internal leader updater configuration variants.
+///
+/// The command-line path normally uses [`create_leader_updater`] with
+/// [`LeaderTracker`] instead.
 pub enum LeaderUpdaterType {
+    /// Always returns a fixed TPU address.
     Pinned(SocketAddr),
+    /// Uses the legacy websocket TPU leader service.
     Legacy(String),
+    /// Uses the websocket node-address service.
     LeaderTracker((String, LeaderTpuCacheServiceConfig)),
+    /// Uses Yellowstone gRPC slot updates.
     YellowstoneLeaderTracker((String, Option<String>, LeaderTpuCacheServiceConfig)),
+    /// Uses a custom UDP/Geyser slot updater.
     SlotUpdaterTracker((SocketAddr, LeaderTpuCacheServiceConfig)),
 }
 
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Websocket node-address service failed.
     #[error(transparent)]
     WebsocketNodeAddressServiceError(#[from] WebsocketNodeAddressServiceError),
 
+    /// Yellowstone node-address service failed.
     #[error(transparent)]
     NodeAddressServiceError(#[from] YellowstoneNodeAddressServiceError),
 
+    /// Custom Geyser node-address service failed.
     #[error(transparent)]
     CustomGeyserNodeAddressServiceError(#[from] CustomGeyserNodeAddressServiceError),
 
+    /// Legacy leader updater failed during startup.
     #[error("Legacy leader updater failed to start")]
     LegacyLeaderUpdaterInitializationFailed,
 }
 
+/// Creates a leader updater from CLI selection and node-address-service config.
+///
+/// `websocket_url` is used by websocket-backed modes. Pinned and Yellowstone
+/// modes ignore it.
 pub async fn create_leader_updater(
     rpc_client: Arc<RpcClient>,
     leader_tracker: LeaderTracker,

@@ -1,3 +1,8 @@
+//! Yellowstone gRPC backed leader tracking.
+//!
+//! This module converts Yellowstone slot updates into
+//! `solana-tpu-client-next` node-address-service slot events.
+
 use {
     futures::Stream,
     futures_util::stream::StreamExt,
@@ -26,18 +31,26 @@ use {
     },
 };
 
+/// Leader updater backed by Yellowstone gRPC slot updates.
 pub struct YellowstoneNodeAddressService(pub NodeAddressService);
 
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Yellowstone client or subscription failed.
     #[error(transparent)]
     YellowstoneError(#[from] YellowstoneError),
 
+    /// Node-address service failed.
     #[error(transparent)]
     NodeAddressServiceError(#[from] NodeAddressServiceError),
 }
 
 impl YellowstoneNodeAddressService {
+    /// Starts the Yellowstone subscription and node-address service.
+    ///
+    /// The subscription listens for slot updates and maps them into
+    /// `SlotEvent::Start` and `SlotEvent::End` events for
+    /// `solana-tpu-client-next`.
     pub async fn run(
         rpc_client: Arc<RpcClient>,
         yellowstone_url: String,
@@ -54,6 +67,7 @@ impl YellowstoneNodeAddressService {
         Ok(Self(service))
     }
 
+    /// Shuts down the underlying node-address service.
     pub async fn shutdown(&mut self) -> Result<(), Error> {
         self.0.shutdown().await?;
         Ok(())
@@ -159,18 +173,23 @@ impl LeaderUpdater for YellowstoneNodeAddressService {
 
 #[derive(Debug, Error)]
 pub enum YellowstoneError {
+    /// Yellowstone client builder failed.
     #[error(transparent)]
     Builder(#[from] GeyserGrpcBuilderError),
 
+    /// Yellowstone gRPC client request failed.
     #[error(transparent)]
     GeyserGrpcClientError(#[from] GeyserGrpcClientError),
 
+    /// Certificate or file I/O failed.
     #[error(transparent)]
     Io(#[from] io::Error),
 
+    /// A transaction update did not include transaction data.
     #[error("Transaction update doesn't have transaction data.")]
     EmptyTransactionUpdate,
 
+    /// Unexpected Yellowstone processing error.
     #[error("Unexpected error.")]
     UnexpectedError,
 }
