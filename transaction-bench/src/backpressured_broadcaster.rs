@@ -56,7 +56,7 @@ impl WorkersBroadcaster for BackpressuredBroadcaster {
                     // do nothing here, we shutdown the worker in try_send_transactions_to_address
                 }
                 Err(err) => {
-                    warn!("Failed to send batch to {new_leader}, worker error: {err}");
+                    debug!("Failed to send batch to {new_leader}, worker error: {err}");
                     // If we have failed to send batch, it will be dropped.
                 }
             }
