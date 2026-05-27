@@ -122,6 +122,38 @@ args=(
 solana-transaction-bench "${args[@]}"
 ```
 
+#### Priority Fees
+
+Use `--compute-unit-price` to set a fixed base compute-unit price in microlamports. To vary the
+price per transaction, set `--random-compute-unit-price-max`: by default each transaction gets an
+additional random value in `0..=N` on top of the base. Add `--priority-fee-schedule-period-ms` to
+switch from random selection to a deterministic sawtooth schedule that ramps the additional value
+from `0` to max over the period, then resets and repeats. When priority-fee mode is enabled and
+`--compute-unit-price` is omitted, the base defaults to `1`. `--priority-fee-schedule-period-ms`
+requires a positive `--random-compute-unit-price-max`; a `1` millisecond period is degenerate and
+does not produce a meaningful ramp.
+
+```shell
+args=(
+  -u "$URL"
+  read-accounts-run
+  --accounts-file accounts.json
+  --duration 30
+  --target-tps 5000
+  --compute-unit-price 1000
+  --random-compute-unit-price-max 5000
+  --priority-fee-schedule-period-ms 2000
+  --transfer-tx-cu-budget 600
+  --send-fanout 2
+  ws-leader-tracker
+)
+solana-transaction-bench "${args[@]}"
+```
+
+When priority-fee mode is active, the tool emits the `transaction-bench-priority-fees` datapoint
+with `total_priority_fees`, the sum of selected compute-unit prices, and `tx_count` for the
+reporting interval.
+
 #### Large Transactions
 
 Increase transaction size by adding more transfer instructions per transaction or by wrapping
