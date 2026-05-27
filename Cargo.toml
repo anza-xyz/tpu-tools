@@ -4,7 +4,6 @@ members = ["rate-latency-tool", "tpu-tools-common", "transaction-bench"]
 resolver = "2"
 
 [workspace.package]
-version = "1.0.0"
 authors = ["Anza Maintainers <maintainers@anza.xyz>"]
 repository = "https://github.com/anza-xyz/tpu-tools"
 homepage = "https://anza.xyz/"
@@ -77,7 +76,7 @@ solana-test-validator = { version = "4.0.0-rc.0", features = ["agave-unstable-ap
 solana-time-utils = "3.0.0"
 solana-tpu-client = { version = "4.0.0-rc.0", features = ["agave-unstable-api"] }
 solana-tpu-client-next = { version = "4.0.0-rc.0", features = ["agave-unstable-api"] }
-solana-tpu-tools-common = { path = "tpu-tools-common" }
+solana-tpu-tools-common = { path = "tpu-tools-common", version = "0.1.0" }
 solana-transaction = { version = "4.0.0", features = ["wincode"] }
 solana-transaction-status = { version = "4.0.0-rc.0", features = ["agave-unstable-api"] }
 spl-memo-interface = "2.0.0"

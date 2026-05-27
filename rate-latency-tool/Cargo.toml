@@ -1,6 +1,6 @@
 [package]
 name = "solana-rate-latency-tool"
-version = { workspace = true }
+version = "1.0.0"
 authors = { workspace = true }
 repository = { workspace = true }
 homepage = { workspace = true }

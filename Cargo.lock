@@ -9914,7 +9914,7 @@ dependencies = [
 
 [[package]]
 name = "solana-tpu-tools-common"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -9995,7 +9995,7 @@ dependencies = [
 
 [[package]]
 name = "solana-transaction-bench"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "agave-logger",
  "async-trait",
