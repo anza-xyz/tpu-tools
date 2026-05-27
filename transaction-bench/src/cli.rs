@@ -288,9 +288,8 @@ pub fn build_cli_parameters() -> ClientCliParameters {
     ClientCliParameters::parse()
 }
 
-/// CLI flags controlling the additional priority fee component. Flattened into
-/// [`ExecutionParams`]; convert to a runtime [`PriorityFeeMode`] via
-/// [`PriorityFeeParams::to_mode`].
+/// CLI flags controlling the additional priority fee component. Flattened into [`ExecutionParams`];
+/// convert to a runtime [`PriorityFeeMode`] via [`TryFrom`].
 #[derive(Args, Clone, Debug, PartialEq, Eq)]
 #[clap(rename_all = "kebab-case")]
 pub struct PriorityFeeParams {
