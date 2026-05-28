@@ -5,6 +5,10 @@ authors = { workspace = true }
 repository = { workspace = true }
 homepage = { workspace = true }
 license = { workspace = true }
+description = "Load-generation benchmark tool for sending Solana transfer transactions over TPU QUIC."
+readme = "README.md"
+keywords = ["solana", "tpu", "benchmark"]
+categories = ["command-line-utilities", "development-tools"]
 edition = { workspace = true }
 
 [package.metadata.docs.rs]
