@@ -43,9 +43,6 @@ const CSV_RECORD_CHANNEL_SIZE: usize = 1024;
 /// in range 9000-20000.
 const MEMO_TX_CU: u32 = 20_000;
 
-/// How often tpu-client-next reports network metrics.
-const METRICS_REPORTING_INTERVAL: Duration = Duration::from_secs(1);
-
 /// How long after stop sending transactions, we want to receive updates from
 /// yellowstone.
 const YELLOWSTONE_STREAM_SHUTDOWN_DELAY: Duration = Duration::from_secs(2);
@@ -71,6 +68,7 @@ pub async fn run_client(
         yellowstone_token,
         check_all_txs,
     }: TxAnalysisParams,
+    stats: Arc<SendTransactionStats>,
     cancel: CancellationToken,
 ) -> Result<(), RateLatencyToolError> {
     let validator_identity = if let Some(staked_identity_file) = staked_identity_file {
@@ -177,22 +175,6 @@ pub async fn run_client(
         cancel.clone(),
     )
     .await?;
-
-    let stats = Arc::new(SendTransactionStats::default());
-    tasks.spawn({
-        let stats = stats.clone();
-        let cancel = cancel_tx_sending.clone();
-        async move {
-            stats
-                .report_to_influxdb(
-                    "rate-latency-tool-network",
-                    METRICS_REPORTING_INTERVAL,
-                    cancel,
-                )
-                .await;
-            Ok(())
-        }
-    });
 
     tasks.spawn({
         let cancel = cancel_tx_sending.clone();

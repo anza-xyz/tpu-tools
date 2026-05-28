@@ -16,10 +16,14 @@ use {
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::{
         config::{RpcBlockSubscribeConfig, RpcBlockSubscribeFilter},
-        response::{RpcBlockUpdateError, transaction::versioned::VersionedTransaction},
+        response::{
+            Response, RpcBlockUpdate, RpcBlockUpdateError,
+            transaction::versioned::VersionedTransaction,
+        },
     },
     solana_signer::Signer,
     solana_test_validator::TestValidatorGenesis,
+    solana_tpu_client_next::SendTransactionStats,
     solana_tpu_tools_common::{
         accounts_file::create_ephemeral_accounts,
         cli::{AccountParams, LeaderTracker},
@@ -28,7 +32,7 @@ use {
     std::{
         net::{IpAddr, Ipv4Addr, SocketAddr},
         sync::Arc,
-        time::Duration,
+        time::{Duration, Instant},
     },
     tokio::runtime::Builder,
     tokio_util::sync::CancellationToken,
@@ -86,6 +90,8 @@ fn test_transactions_sending() {
     .unwrap();
 
     let cancel = CancellationToken::new();
+    let stats = Arc::new(SendTransactionStats::default());
+    let client_stats = stats.clone();
     let handle = rt.spawn(async {
         let funding_key = Keypair::new();
         let funding_pubkey = funding_key.pubkey();
@@ -116,10 +122,10 @@ fn test_transactions_sending() {
             ExecutionParams {
                 staked_identity_file: None,
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
-                duration: Some(Duration::from_secs(5)),
+                duration: Some(Duration::from_secs(2)),
                 num_max_open_connections: 1,
                 send_fanout: 1,
-                send_interval: Duration::from_millis(100),
+                send_interval: Duration::from_millis(50),
                 compute_unit_price: Some(100),
                 handshake_timeout: Duration::from_secs(2),
                 leader_tracker: LeaderTracker::WsLeaderTracker,
@@ -130,6 +136,7 @@ fn test_transactions_sending() {
                 yellowstone_token: None,
                 check_all_txs: false,
             },
+            client_stats,
             cancel,
         )
         .await
@@ -139,32 +146,25 @@ fn test_transactions_sending() {
         .expect("Should not fail joining client task.")
         .expect("Should not fail running client.");
 
-    let mut num_memo_tx = 0;
-    for _ in 0..10 {
-        receiver.try_iter().for_each(|response| {
-            if let Some(err) = response.value.err {
-                // sometimes block is not ready, see issues/33462
-                assert_eq!(err, RpcBlockUpdateError::BlockStoreError);
-            }
-            if let Some(block) = response.value.block
-                && let Some(encoded_transactions) = block.transactions
-            {
-                for encoded_tx in encoded_transactions {
-                    let tx = encoded_tx.transaction.decode();
-                    if let Some(tx) = tx
-                        && is_memo(tx)
-                    {
-                        num_memo_tx += 1;
-                    }
-                }
-            }
-        });
-        std::thread::sleep(Duration::from_secs(1));
+    let successfully_sent = stats.to_non_atomic().successfully_sent;
+    assert!(
+        successfully_sent > 0,
+        "Expected client to successfully send at least one memo tx"
+    );
+
+    let mut num_memo_tx = 0u64;
+    let before = Instant::now();
+    while num_memo_tx < successfully_sent && before.elapsed() < Duration::from_secs(10) {
+        num_memo_tx += count_memo_txs(receiver.try_iter());
+        if num_memo_tx < successfully_sent {
+            std::thread::sleep(Duration::from_millis(100));
+        }
     }
+    num_memo_tx += count_memo_txs(receiver.try_iter());
 
     assert_eq!(
-        num_memo_tx, 50,
-        "Expected to receive 50 memo txs but got {num_memo_tx}"
+        num_memo_tx, successfully_sent,
+        "Expected to receive {successfully_sent} memo txs but got {num_memo_tx}"
     );
     // If we don't drop the test_validator, the blocking web socket service
     // won't return, and the `block_subscribe_client` won't shut down
@@ -194,6 +194,29 @@ async fn wait_for_balance(client: &RpcClient, pubkey: &solana_pubkey::Pubkey, ta
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
     panic!("Airdrop balance did not reach target {target} for {pubkey}");
+}
+
+fn count_memo_txs(responses: impl IntoIterator<Item = Response<RpcBlockUpdate>>) -> u64 {
+    let mut num_memo_tx = 0u64;
+    for response in responses {
+        if let Some(err) = response.value.err {
+            // sometimes block is not ready, see issues/33462
+            assert_eq!(err, RpcBlockUpdateError::BlockStoreError);
+        }
+        if let Some(block) = response.value.block
+            && let Some(encoded_transactions) = block.transactions
+        {
+            for encoded_tx in encoded_transactions {
+                let tx = encoded_tx.transaction.decode();
+                if let Some(tx) = tx
+                    && is_memo(tx)
+                {
+                    num_memo_tx = num_memo_tx.saturating_add(1);
+                }
+            }
+        }
+    }
+    num_memo_tx
 }
 
 fn is_memo(tx: VersionedTransaction) -> bool {

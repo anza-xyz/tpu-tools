@@ -3,6 +3,7 @@ use {
     log::*,
     solana_cli_config::ConfigInput,
     solana_keypair::Keypair,
+    solana_metrics::datapoint_info,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_signer::{EncodableKey, Signer},
     solana_tpu_tools_common::{
@@ -16,10 +17,15 @@ use {
         cli::{ClientCliParameters, Command, build_cli_parameters},
         error::BenchClientError,
         mock_rpc_client::new_mock_rpc_client,
-        run_client::run_client,
+        run_client::{RunClientStats, run_client},
     },
-    std::sync::Arc,
+    std::{sync::Arc, time::Duration},
+    tokio::{sync::oneshot, task::JoinHandle},
+    tokio_util::sync::CancellationToken,
 };
+
+/// How often tpu-client-next reports network metrics.
+const METRICS_REPORTING_INTERVAL: Duration = Duration::from_secs(1);
 
 #[cfg(not(any(target_env = "msvc", target_os = "freebsd")))]
 #[global_allocator]
@@ -87,14 +93,20 @@ async fn run(parameters: ClientCliParameters) -> Result<(), BenchClientError> {
                 )
                 .await?
             };
-            run_client(
+            let cancel = CancellationToken::new();
+            let (stats_sender, stats_receiver) = oneshot::channel();
+            let metrics_task = spawn_metrics_reporter(stats_receiver, cancel.clone());
+            let result = run_client(
                 rpc_client,
                 websocket_url,
                 accounts,
                 transaction_params,
                 execution_params,
+                Some(stats_sender),
+                cancel.clone(),
             )
-            .await?;
+            .await;
+            finish_client_run(result, cancel, metrics_task).await?;
         }
         Command::ReadAccountsRun {
             read_accounts,
@@ -102,14 +114,20 @@ async fn run(parameters: ClientCliParameters) -> Result<(), BenchClientError> {
             execution_params,
         } => {
             let accounts = read_accounts_file(read_accounts.accounts_file.clone());
-            run_client(
+            let cancel = CancellationToken::new();
+            let (stats_sender, stats_receiver) = oneshot::channel();
+            let metrics_task = spawn_metrics_reporter(stats_receiver, cancel.clone());
+            let result = run_client(
                 rpc_client,
                 websocket_url,
                 accounts,
                 transaction_params,
                 execution_params,
+                Some(stats_sender),
+                cancel.clone(),
             )
-            .await?;
+            .await;
+            finish_client_run(result, cancel, metrics_task).await?;
         }
         Command::WriteAccounts(write_accounts) => {
             create_file_persisted_accounts(
@@ -171,6 +189,94 @@ fn create_mock_accounts(num_payers: usize) -> AccountsFile {
     AccountsFile {
         payers: (0..num_payers).map(|_| Keypair::new()).collect(),
     }
+}
+
+fn spawn_metrics_reporter(
+    stats_receiver: oneshot::Receiver<RunClientStats>,
+    cancel: CancellationToken,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        match stats_receiver.await {
+            Ok(client_stats) => {
+                report_aggregated_stats(client_stats, METRICS_REPORTING_INTERVAL, cancel).await;
+            }
+            Err(_) => {
+                debug!("Stats reporter was not started because stats were not available.");
+            }
+        }
+    })
+}
+
+/// Periodically reads and resets stats from all scheduler instances, sums them,
+/// and reports the aggregate to InfluxDB under a single metric name.
+#[allow(clippy::arithmetic_side_effects)]
+async fn report_aggregated_stats(
+    client_stats: RunClientStats,
+    reporting_interval: Duration,
+    cancel: CancellationToken,
+) {
+    let mut interval = tokio::time::interval(reporting_interval);
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                let (mut connect_error, mut connection_error, mut successfully_sent,
+                     mut congestion_events, mut write_error) = (0i64, 0i64, 0i64, 0i64, 0i64);
+                for stats in &client_stats.send_transaction_stats {
+                    let view = stats.read_and_reset();
+                    connect_error += (view.connect_error_cids_exhausted
+                        + view.connect_error_other
+                        + view.connect_error_invalid_remote_address) as i64;
+                    connection_error += (view.connection_error_reset
+                        + view.connection_error_cids_exhausted
+                        + view.connection_error_timed_out
+                        + view.connection_error_application_closed
+                        + view.connection_error_transport_error
+                        + view.connection_error_version_mismatch
+                        + view.connection_error_locally_closed) as i64;
+                    successfully_sent += view.successfully_sent as i64;
+                    congestion_events += view.transport_congestion_events as i64;
+                    write_error += (view.write_error_stopped
+                        + view.write_error_closed_stream
+                        + view.write_error_connection_lost
+                        + view.write_error_zero_rtt_rejected) as i64;
+                }
+                datapoint_info!(
+                    "transaction-bench-network",
+                    ("connect_error", connect_error, i64),
+                    ("connection_error", connection_error, i64),
+                    ("successfully_sent", successfully_sent, i64),
+                    ("congestion_events", congestion_events, i64),
+                    ("write_error", write_error, i64),
+                );
+
+                let (total_priority_fees, priority_fee_tx_count) =
+                    client_stats.priority_fee_stats.read_and_reset();
+                datapoint_info!(
+                    "transaction-bench-priority-fees",
+                    ("total_priority_fees", total_priority_fees, i64),
+                    ("tx_count", priority_fee_tx_count, i64),
+                );
+            }
+            _ = cancel.cancelled() => break,
+        }
+    }
+}
+
+async fn finish_client_run(
+    result: Result<(), BenchClientError>,
+    cancel: CancellationToken,
+    metrics_task: JoinHandle<()>,
+) -> Result<(), BenchClientError> {
+    cancel.cancel();
+    if let Err(err) = metrics_task.await {
+        error!("Stats reporting task panicked: {err:?}");
+        result?;
+        return Err(BenchClientError::TaskJoinFailure {
+            task_name: "StatsReporter".to_string(),
+            reason: err.to_string(),
+        });
+    }
+    result
 }
 
 #[cfg(test)]

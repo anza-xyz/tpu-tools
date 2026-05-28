@@ -10,12 +10,16 @@ use {
     },
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_signer::{EncodableKey, Signer},
+    solana_tpu_client_next::SendTransactionStats,
     solana_tpu_tools_common::accounts_file::{
         create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
     },
-    std::sync::Arc,
+    std::{sync::Arc, time::Duration},
     tokio_util::sync::CancellationToken,
 };
+
+/// How often tpu-client-next reports network metrics.
+const METRICS_REPORTING_INTERVAL: Duration = Duration::from_secs(1);
 
 fn main() {
     agave_logger::setup_with_default("solana=info");
@@ -66,15 +70,19 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
                 parameters.validate_accounts,
             )
             .await?;
-            run_client(
+            let stats = Arc::new(SendTransactionStats::default());
+            let metrics_task = spawn_metrics_reporter(stats.clone(), cancel.clone());
+            let result = run_client(
                 rpc_client,
                 websocket_url,
                 accounts,
                 execution_params,
                 analysis_params,
-                cancel,
+                stats,
+                cancel.clone(),
             )
-            .await?;
+            .await;
+            finish_client_run(result, cancel, metrics_task).await?;
         }
         Command::ReadAccountsRun {
             read_accounts,
@@ -82,15 +90,19 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
             analysis_params,
         } => {
             let accounts = read_accounts_file(read_accounts.accounts_file.clone());
-            run_client(
+            let stats = Arc::new(SendTransactionStats::default());
+            let metrics_task = spawn_metrics_reporter(stats.clone(), cancel.clone());
+            let result = run_client(
                 rpc_client,
                 websocket_url,
                 accounts,
                 execution_params,
                 analysis_params,
-                cancel,
+                stats,
+                cancel.clone(),
             )
-            .await?;
+            .await;
+            finish_client_run(result, cancel, metrics_task).await?;
         }
         Command::WriteAccounts(write_accounts) => {
             create_file_persisted_accounts(
@@ -106,4 +118,33 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
     }
 
     Ok(())
+}
+
+fn spawn_metrics_reporter(
+    stats: Arc<SendTransactionStats>,
+    cancel: CancellationToken,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        stats
+            .report_to_influxdb(
+                "rate-latency-tool-network",
+                METRICS_REPORTING_INTERVAL,
+                cancel,
+            )
+            .await;
+    })
+}
+
+async fn finish_client_run(
+    result: Result<(), RateLatencyToolError>,
+    cancel: CancellationToken,
+    metrics_task: tokio::task::JoinHandle<()>,
+) -> Result<(), RateLatencyToolError> {
+    cancel.cancel();
+    if let Err(err) = metrics_task.await {
+        error!("Stats reporting task panicked: {err:?}");
+        result?;
+        return Err(RateLatencyToolError::UnexpectedError);
+    }
+    result
 }
