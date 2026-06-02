@@ -149,6 +149,16 @@ pub struct ExecutionParams {
 
     #[clap(
         long,
+        default_value_t = 10,
+        help = "Max time (seconds) the client waits after generation finishes for the in-flight \
+                tx queues + quinn buffers to drain before tearing down the schedulers. Set to 0 \
+                to disable the drain phase (matches pre-drain behaviour and is likely to drop \
+                in-flight transactions when --num-transactions is set)."
+    )]
+    pub drain_seconds: u64,
+
+    #[clap(
+        long,
         default_value_t = 16,
         help = "Max number of connections to keep open."
     )]
@@ -403,6 +413,7 @@ mod tests {
                 num_transactions: None,
                 target_tps: None,
                 initial_congestion_window: None,
+                drain_seconds: 10,
                 leader_tracker: LeaderTracker::PinnedLeaderTracker {
                     address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8009),
                 },
