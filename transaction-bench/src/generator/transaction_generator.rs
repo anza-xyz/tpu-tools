@@ -42,6 +42,7 @@ pub struct TransactionGenerator {
     priority_fee_stats: Arc<PriorityFeeStats>,
     send_batch_size: usize,
     run_duration: Option<Duration>,
+    num_transactions: Option<NonZeroU64>,
     target_tps: Option<NonZeroU64>,
     workers_pull_size: usize,
 }
@@ -58,6 +59,7 @@ impl TransactionGenerator {
         priority_fee_stats: Arc<PriorityFeeStats>,
         send_batch_size: usize,
         duration: Option<Duration>,
+        num_transactions: Option<NonZeroU64>,
         target_tps: Option<NonZeroU64>,
         workers_pull_size: usize,
     ) -> Self {
@@ -71,6 +73,7 @@ impl TransactionGenerator {
             priority_fee_stats,
             send_batch_size,
             run_duration: duration,
+            num_transactions,
             target_tps,
             workers_pull_size,
         }
@@ -107,11 +110,21 @@ impl TransactionGenerator {
         let mut sender_index: usize = 0;
         let start = Instant::now();
         let mut next_batch_at = self.target_tps.map(|_| start);
+        let num_transactions_budget = self.num_transactions.map(|n| n.get());
+        let mut txs_scheduled: u64 = 0;
         loop {
             if let Some(run_duration) = self.run_duration
                 && start.elapsed() >= run_duration
             {
-                info!("Transaction generator is stopping...");
+                info!("Transaction generator is stopping: duration reached.");
+                while let Some(result) = futures.join_next().await {
+                    debug!("Future result {result:?}");
+                }
+                break;
+            }
+
+            if num_transactions_budget.is_some_and(|budget| txs_scheduled >= budget) {
+                info!("Transaction generator is stopping: requested tx count reached.");
                 while let Some(result) = futures.join_next().await {
                     debug!("Future result {result:?}");
                 }
@@ -127,7 +140,18 @@ impl TransactionGenerator {
                 if let Some(next_batch_deadline) = next_batch_at {
                     tokio::time::sleep_until(next_batch_deadline).await;
                 }
-                let send_batch_size = self.send_batch_size;
+                let send_batch_size = match num_transactions_budget {
+                    Some(budget) => {
+                        let remaining = budget.saturating_sub(txs_scheduled);
+                        if remaining == 0 {
+                            break;
+                        }
+                        let remaining = usize::try_from(remaining).unwrap_or(usize::MAX);
+                        self.send_batch_size.min(remaining)
+                    }
+                    None => self.send_batch_size,
+                };
+                txs_scheduled = txs_scheduled.saturating_add(send_batch_size as u64);
                 let transaction_params = self.transaction_params.clone();
                 let compute_unit_price = self.compute_unit_price;
                 let priority_fee_mode = self.priority_fee_mode.clone();
