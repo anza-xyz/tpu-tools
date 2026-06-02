@@ -139,6 +139,16 @@ pub struct ExecutionParams {
 
     #[clap(
         long,
+        value_parser = value_parser!(NonZeroU64),
+        help = "Override the QUIC initial congestion window (in bytes) passed to tpu-client-next. \
+                Larger values skip TCP-style slow-start at connection startup so that \
+                transactions can be sent as fast as possible immediately. Defaults to \
+                tpu-client-next's built-in value (128 * PACKET_DATA_SIZE)."
+    )]
+    pub initial_congestion_window: Option<NonZeroU64>,
+
+    #[clap(
+        long,
         default_value_t = 16,
         help = "Max number of connections to keep open."
     )]
@@ -381,6 +391,7 @@ mod tests {
                 duration: Some(Duration::from_secs(120)),
                 num_transactions: None,
                 target_tps: None,
+                initial_congestion_window: None,
                 leader_tracker: LeaderTracker::PinnedLeaderTracker {
                     address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8009),
                 },

@@ -136,6 +136,7 @@ fn test_transactions_sending() {
                 duration: Some(Duration::from_secs(5)),
                 num_transactions: None,
                 target_tps: None,
+                initial_congestion_window: None,
                 num_max_open_connections: 1,
                 workers_pull_size: 1,
                 send_fanout: 1,
