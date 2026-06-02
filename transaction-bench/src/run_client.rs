@@ -192,6 +192,7 @@ pub async fn run_client(
         target_tps,
         initial_congestion_window,
         num_max_open_connections,
+        clients_per_identity,
         workers_pull_size,
         send_fanout,
         compute_unit_price,
@@ -205,7 +206,13 @@ pub async fn run_client(
             Keypair::read_from_file(&path).map_err(|_err| BenchClientError::KeypairReadFailure)
         })
         .collect::<Result<_, _>>()?;
-    let num_tpu_clients = validator_identities.len().max(1);
+    // Each tpu-client-next instance opens one connection per leader. To get
+    // multiple connections under a single identity (without repeating
+    // --staked-identity-file), spawn `clients_per_identity` instances per
+    // identity. With no identity file, `num_identities` is 1 and these are
+    // unstaked instances.
+    let num_identities = validator_identities.len().max(1);
+    let num_tpu_clients = num_identities.saturating_mul(clients_per_identity.max(1));
 
     // Set up size of the txs batch to put into the queue to be equal to the num_streams_per_connection
     let num_streams_per_connection = compute_num_streams(
@@ -329,7 +336,9 @@ pub async fn run_client(
         )
         .await?;
 
-        let stake_identity = validator_identities.get(i).map(StakeIdentity::new);
+        let stake_identity = validator_identities
+            .get(i % num_identities)
+            .map(StakeIdentity::new);
         let scheduler_config = ConnectionWorkersSchedulerConfig {
             bind: BindTarget::Address(bind),
             stake_identity,

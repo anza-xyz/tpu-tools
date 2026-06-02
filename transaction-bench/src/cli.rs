@@ -156,6 +156,17 @@ pub struct ExecutionParams {
 
     #[clap(
         long,
+        default_value_t = 1,
+        help = "Number of tpu-client-next instances to spawn per staked identity. Because each \
+                instance opens one QUIC connection per leader, this is the number of connections \
+                per leader opened under one identity, without having to repeat \
+                --staked-identity-file. With no identity file, spawns this many unstaked \
+                instances. Total instances = max(1, num staked identities) * clients-per-identity."
+    )]
+    pub clients_per_identity: usize,
+
+    #[clap(
+        long,
         default_value_t = 8,
         help = "Size of the workers pull, controls how many transactions batches are generated in \
                 parallel."
@@ -396,6 +407,7 @@ mod tests {
                     address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8009),
                 },
                 num_max_open_connections: 16,
+                clients_per_identity: 1,
                 workers_pull_size: 8,
                 send_fanout: 2,
                 compute_unit_price: Some(1000),

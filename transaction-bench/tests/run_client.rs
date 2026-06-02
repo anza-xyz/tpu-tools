@@ -138,6 +138,7 @@ fn test_transactions_sending() {
                 target_tps: None,
                 initial_congestion_window: None,
                 num_max_open_connections: 1,
+                clients_per_identity: 1,
                 workers_pull_size: 1,
                 send_fanout: 1,
                 compute_unit_price: Some(100),
