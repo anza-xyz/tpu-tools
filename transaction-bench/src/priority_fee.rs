@@ -32,7 +32,7 @@ impl PriorityFeeMode {
     pub fn resolve(&self) -> u64 {
         match *self {
             Self::None => 0,
-            Self::Random { max } => rand::thread_rng().gen_range(0..=max),
+            Self::Random { max } => rand::rng().random_range(0..=max),
             Self::Scheduled { max, period_ms } => {
                 let now_ms = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
