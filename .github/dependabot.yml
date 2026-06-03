@@ -9,14 +9,18 @@ updates:
     directories:
       - "/"
     schedule:
-      interval: weekly
+      interval: monthly
       time: "01:00"
       timezone: America/Los_Angeles
-    open-pull-requests-limit: 6
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 7
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: weekly
       time: "01:00"
       timezone: America/Los_Angeles
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
