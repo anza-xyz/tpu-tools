@@ -68,7 +68,7 @@ solana-rpc-client = { version = "4.0.0-rc.0", features = ["agave-unstable-api"] 
 solana-rpc-client-api = { version = "4.0.0-rc.0", features = ["agave-unstable-api"] }
 solana-sdk-ids = "3.1.0"
 solana-sha256-hasher = "3.1.0"
-solana-signature = { version = "3.3.0" }
+solana-signature = { version = "3.4.0" }
 solana-signer = "3.0.0"
 solana-streamer = { version = "4.0.0-rc.0", features = ["agave-unstable-api"] }
 solana-system-interface = "3.0.0"
