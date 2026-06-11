@@ -396,7 +396,7 @@ mod tests {
 
         fn get_random_index(&self) -> usize {
             let mut rng = self.rng.lock().unwrap();
-            rng.gen_range(0..self.mock_senders.len())
+            rng.random_range(0..self.mock_senders.len())
         }
     }
 
@@ -515,7 +515,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_accounts_half_rpc_succeeds() {
         let seed = 12345;
-        let rpc_client = Arc::new(create_mock_rpc_client(&["succeeds", "fails"], seed));
+        let rpc_client = Arc::new(create_mock_rpc_client(&["fails", "succeeds"], seed));
 
         let accounts = create_accounts(&rpc_client, &[Keypair::new()], 12, 1, 10).await;
 

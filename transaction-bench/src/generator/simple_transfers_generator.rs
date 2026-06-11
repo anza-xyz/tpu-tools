@@ -5,7 +5,7 @@ use {
         priority_fee::{PriorityFeeMode, PriorityFeeStats},
     },
     log::debug,
-    rand::{seq::IteratorRandom, thread_rng},
+    rand::{rng, seq::IteratorRandom},
     solana_hash::Hash,
     solana_keypair::Keypair,
     solana_measure::measure::Measure,
@@ -128,7 +128,7 @@ fn unique_random_numbers(count: usize, lamports_to_transfer: u64) -> Vec<u64> {
         "Not enough unique values in range: {count} > {lamports_to_transfer}"
     );
 
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
     // Sample `count` unique values from the full range
     (1..=lamports_to_transfer).choose_multiple(&mut rng, count)
