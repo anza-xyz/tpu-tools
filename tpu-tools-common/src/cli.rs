@@ -8,10 +8,15 @@ use {
     solana_clap_v3_utils::{
         input_parsers::parse_url_or_moniker, input_validators::normalize_to_url_if_moniker,
     },
+    solana_keypair::Keypair,
     solana_native_token::LAMPORTS_PER_SOL,
-    std::{net::SocketAddr, path::PathBuf},
+    solana_pubkey::Pubkey,
+    solana_signer::{EncodableKey, Signer},
+    std::{net::SocketAddr, path::PathBuf, str::FromStr},
     tokio::time::Duration,
 };
+
+const MAX_RPC_SEND_TX_BATCH: usize = 60;
 
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
 #[clap(rename_all = "kebab-case")]
@@ -88,6 +93,42 @@ pub struct ReadAccounts {
     pub accounts_file: PathBuf,
 }
 
+/// Parameters for draining payer accounts from a file.
+#[derive(Args, Debug, PartialEq, Eq, Clone)]
+#[clap(rename_all = "kebab-case")]
+pub struct DeleteAccounts {
+    #[clap(long, help = "File to read the accounts from.")]
+    pub accounts_file: PathBuf,
+
+    #[clap(
+        long,
+        help = "Account that receives all drained lamports. Accepts a base58 pubkey or a keypair \
+                file path."
+    )]
+    pub recipient: String,
+
+    #[clap(long, default_value_t = MAX_RPC_SEND_TX_BATCH, help = "Maximum number of transactions to send concurrently in a batch.")]
+    pub txn_batch_size: usize,
+}
+
+/// Parses a recipient as a base58 pubkey, or reads a pubkey from a keypair file path.
+pub fn parse_recipient(recipient: &str) -> Result<Pubkey, String> {
+    let recipient = recipient.trim();
+
+    if let Ok(pubkey) = Pubkey::from_str(recipient) {
+        return Ok(pubkey);
+    }
+
+    let path = PathBuf::from(recipient);
+    if let Ok(keypair) = Keypair::read_from_file(&path) {
+        return Ok(keypair.pubkey());
+    }
+
+    Err(format!(
+        "invalid recipient '{recipient}': expected a base58 pubkey or a keypair file path"
+    ))
+}
+
 /// Parses an RPC URL or Solana moniker and normalizes monikers to URLs.
 pub fn parse_and_normalize_url(addr: &str) -> Result<String, String> {
     match parse_url_or_moniker(addr) {
@@ -129,6 +170,17 @@ fn parse_balance(s: &str) -> Result<u64, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_recipient_from_pubkey() {
+        let pubkey = Pubkey::new_unique();
+        assert_eq!(parse_recipient(&pubkey.to_string()).unwrap(), pubkey);
+    }
+
+    #[test]
+    fn test_parse_recipient_rejects_invalid_value() {
+        assert!(parse_recipient("not-a-pubkey-or-keypair").is_err());
+    }
 
     #[test]
     fn test_parse_balance() {

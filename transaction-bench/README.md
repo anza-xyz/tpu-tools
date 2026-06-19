@@ -78,6 +78,21 @@ run_args=(
 solana-transaction-bench "${run_args[@]}"
 ```
 
+To drain a saved accounts file after testing, use `delete-accounts`. The payer accounts are loaded
+from the same JSON format produced by `write-accounts`; `--authority` pays transaction fees, and
+`--recipient` receives the payer balances.
+
+```shell
+delete_accounts_args=(
+  -u "$URL"
+  --authority "$FUNDER_KEYPAIR"
+  delete-accounts
+  --accounts-file accounts.json
+  --recipient "$RECIPIENT_PUBKEY"
+)
+solana-transaction-bench "${delete_accounts_args[@]}"
+```
+
 #### Multiple Staked Identities
 
 Pass `--staked-identity-file` more than once to spawn multiple

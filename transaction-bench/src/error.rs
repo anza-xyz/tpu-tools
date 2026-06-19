@@ -3,7 +3,8 @@ use {
     crate::generator::transaction_generator::TransactionGeneratorError,
     solana_tpu_client_next::ConnectionWorkersSchedulerError,
     solana_tpu_tools_common::{
-        accounts_creator::Error as AccountsCreatorError, accounts_file::Error as AccountsFileError,
+        accounts_creator::Error as AccountsCreatorError,
+        accounts_deleter::Error as AccountsDeleterError, accounts_file::Error as AccountsFileError,
         blockhash_updater::BlockhashUpdaterError, leader_updater::Error as LeaderUpdaterError,
     },
     thiserror::Error,
@@ -13,6 +14,9 @@ use {
 pub enum BenchClientError {
     #[error(transparent)]
     AccountsCreatorError(#[from] AccountsCreatorError),
+
+    #[error(transparent)]
+    AccountsDeleterError(#[from] AccountsDeleterError),
 
     #[error(transparent)]
     ConnectionTasksSchedulerError(#[from] ConnectionWorkersSchedulerError),

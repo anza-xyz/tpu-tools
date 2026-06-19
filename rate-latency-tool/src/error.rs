@@ -41,6 +41,9 @@ pub enum RateLatencyToolError {
     #[error("Tool finished unexpectedly")]
     UnexpectedError,
 
+    #[error("Invalid CLI arguments: {0}")]
+    InvalidCliArguments(String),
+
     #[error(transparent)]
     LeaderUpdaterError(#[from] LeaderUpdaterError),
 }

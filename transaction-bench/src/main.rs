@@ -7,11 +7,12 @@ use {
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_signer::{EncodableKey, Signer},
     solana_tpu_tools_common::{
+        accounts_deleter::delete_file_persisted_accounts,
         accounts_file::{
             AccountsFile, create_ephemeral_accounts, create_file_persisted_accounts,
             read_accounts_file,
         },
-        cli::LeaderTracker,
+        cli::{LeaderTracker, parse_recipient},
     },
     solana_transaction_bench::{
         cli::{ClientCliParameters, Command, build_cli_parameters},
@@ -50,7 +51,8 @@ fn main() {
 async fn run(parameters: ClientCliParameters) -> Result<(), BenchClientError> {
     validate_mock_rpc_usage(&parameters)?;
 
-    let authority = if let Some(authority_file) = parameters.authority {
+    let authority_provided = parameters.authority.is_some();
+    let authority = if let Some(authority_file) = parameters.authority.as_ref() {
         Keypair::read_from_file(authority_file)
             .map_err(|_err| BenchClientError::KeypairReadFailure)?
     } else {
@@ -140,6 +142,23 @@ async fn run(parameters: ClientCliParameters) -> Result<(), BenchClientError> {
             )
             .await?;
         }
+        Command::DeleteAccounts(delete_accounts) => {
+            if !authority_provided {
+                return Err(BenchClientError::InvalidCliArguments(
+                    "`delete-accounts` requires --authority to pay transaction fees".to_string(),
+                ));
+            }
+            let recipient = parse_recipient(&delete_accounts.recipient)
+                .map_err(BenchClientError::InvalidCliArguments)?;
+            delete_file_persisted_accounts(
+                rpc_client.clone(),
+                authority,
+                delete_accounts.accounts_file,
+                recipient,
+                delete_accounts.txn_batch_size,
+            )
+            .await?;
+        }
     }
 
     Ok(())
@@ -176,9 +195,12 @@ fn validate_mock_rpc_usage(parameters: &ClientCliParameters) -> Result<(), Bench
         ));
     }
 
-    if matches!(&parameters.command, Command::WriteAccounts(_)) {
+    if matches!(
+        &parameters.command,
+        Command::WriteAccounts(_) | Command::DeleteAccounts(_)
+    ) {
         return Err(BenchClientError::InvalidCliArguments(
-            "--mock-rpc does not support `write-accounts`".to_string(),
+            "--mock-rpc does not support account file mutation commands".to_string(),
         ));
     }
 
@@ -284,7 +306,7 @@ mod tests {
     use {
         super::*,
         solana_commitment_config::CommitmentConfig,
-        solana_tpu_tools_common::cli::{AccountParams, WriteAccounts},
+        solana_tpu_tools_common::cli::{AccountParams, DeleteAccounts, WriteAccounts},
         solana_transaction_bench::cli::{
             ExecutionParams, InstructionPaddingParams, PriorityFeeParams, SimpleTransferTxParams,
             TransactionParams,
@@ -367,7 +389,28 @@ mod tests {
         let err = validate_mock_rpc_usage(&parameters)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("write-accounts"));
+        assert!(err.contains("account file mutation"));
+    }
+
+    #[test]
+    fn test_mock_rpc_rejects_delete_accounts() {
+        let parameters = ClientCliParameters {
+            json_rpc_url: "http://localhost:8899".to_string(),
+            commitment_config: CommitmentConfig::confirmed(),
+            authority: None,
+            validate_accounts: false,
+            mock_rpc: true,
+            command: Command::DeleteAccounts(DeleteAccounts {
+                accounts_file: "accounts.json".into(),
+                recipient: solana_pubkey::Pubkey::new_unique().to_string(),
+                txn_batch_size: 64,
+            }),
+        };
+
+        let err = validate_mock_rpc_usage(&parameters)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("account file mutation"));
     }
 
     #[test]

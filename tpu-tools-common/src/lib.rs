@@ -12,6 +12,7 @@
 //! - [`accounts_file`]: read and write payer account files, and create
 //!   ephemeral or file-persisted payer accounts.
 //! - [`accounts_creator`]: RPC-backed payer account creation.
+//! - [`accounts_deleter`]: RPC-backed payer account draining.
 //! - [`cli`]: shared Clap argument structs and parsers.
 //! - [`blockhash_updater`]: background RPC polling for fresh blockhashes.
 //! - [`leader_updater`]: leader tracking traits and factory function.
@@ -24,6 +25,7 @@
 //! release candidate dependencies evolve.
 
 pub mod accounts_creator;
+pub mod accounts_deleter;
 pub mod accounts_file;
 pub mod blockhash_updater;
 pub mod cli;

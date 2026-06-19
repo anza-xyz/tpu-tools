@@ -3,12 +3,12 @@ name = "solana-tpu-tools-common"
 version = "0.1.0"
 authors = { workspace = true }
 edition = { workspace = true }
+description = "Shared Solana TPU tooling for account setup, blockhash updates, and leader tracking."
+documentation = "https://docs.rs/solana-tpu-tools-common"
+readme = "README.md"
 homepage = { workspace = true }
 repository = { workspace = true }
-documentation = "https://docs.rs/solana-tpu-tools-common"
 license = { workspace = true }
-description = "Shared Solana TPU tooling for account setup, blockhash updates, and leader tracking."
-readme = "README.md"
 keywords = ["solana", "tpu", "benchmark"]
 categories = ["command-line-utilities", "development-tools"]
 
@@ -40,11 +40,7 @@ solana-sdk-ids = { workspace = true }
 solana-signer = { workspace = true }
 solana-system-interface = { workspace = true }
 solana-tpu-client = { workspace = true }
-solana-tpu-client-next = { workspace = true, features = [
-  "agave-unstable-api",
-  "metrics",
-  "websocket-node-address-service"
-] }
+solana-tpu-client-next = { workspace = true, features = ["agave-unstable-api", "metrics", "websocket-node-address-service"] }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
