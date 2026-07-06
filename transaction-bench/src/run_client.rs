@@ -137,6 +137,7 @@ pub async fn run_client(
         duration,
         num_transactions,
         target_tps,
+        initial_congestion_window,
         num_max_open_connections,
         workers_pull_size,
         send_fanout,
@@ -313,7 +314,7 @@ pub async fn run_client(
                 connect: send_fanout.saturating_add(1),
             },
             skip_check_transaction_age: false,
-            override_initial_congestion_window: None,
+            override_initial_congestion_window: initial_congestion_window.map(NonZeroU64::get),
         };
 
         let (_, update_identity_receiver) = watch::channel(None);
