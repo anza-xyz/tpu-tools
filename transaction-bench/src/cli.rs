@@ -162,6 +162,17 @@ pub struct ExecutionParams {
 
     #[clap(
         long,
+        default_value_t = 0,
+        help = "After the generator finishes, keep the scheduler channels open for up to this \
+                many seconds so tpu-client-next's worker queues and quinn send buffers can flush \
+                in-flight transactions before teardown. 0 (default) tears down immediately. \
+                Recommended when using --num-transactions, which otherwise drops the last \
+                in-flight batches."
+    )]
+    pub drain_seconds: u64,
+
+    #[clap(
+        long,
         default_value_t = 16,
         help = "Max number of connections to keep open."
     )]
@@ -408,6 +419,7 @@ mod tests {
                 num_transactions: None,
                 target_tps: None,
                 initial_congestion_window: None,
+                drain_seconds: 0,
                 leader_tracker: LeaderTracker::PinnedLeaderTracker {
                     address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8009),
                 },

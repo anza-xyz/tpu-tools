@@ -138,6 +138,7 @@ pub async fn run_client(
         num_transactions,
         target_tps,
         initial_congestion_window,
+        drain_seconds,
         num_max_open_connections,
         workers_pull_size,
         send_fanout,
@@ -259,6 +260,11 @@ pub async fn run_client(
         transaction_receivers.push(receiver);
     }
 
+    // Retain a clone of the senders past the generator so the scheduler
+    // channels stay open during the drain phase (see below); the generator
+    // drops its own copies when it finishes.
+    let drain_senders = transaction_senders.clone();
+
     let priority_fee_mode = PriorityFeeMode::try_from(&priority_fee_params)
         .map_err(BenchClientError::InvalidCliArguments)?;
     let priority_fee_stats = Arc::new(PriorityFeeStats::default());
@@ -349,6 +355,17 @@ pub async fn run_client(
     }
 
     join_service(transaction_generator_task_handle, "TransactionGenerator").await?;
+
+    // The generator has dropped its senders. Keep our retained clones alive for
+    // the drain window so the schedulers don't tear down while tpu-client-next's
+    // worker queues and quinn send buffers still hold in-flight transactions.
+    if drain_seconds > 0 {
+        info!("Generator finished; draining in-flight transactions for {drain_seconds}s.");
+        tokio::time::sleep(Duration::from_secs(drain_seconds)).await;
+    }
+    // Closing the channels lets the tpu-client-next instances shut down.
+    drop(drain_senders);
+
     join_service(blockhash_task_handle, "BlockhashUpdater").await?;
     for (i, handle) in scheduler_handles.into_iter().enumerate() {
         let name = format!("Scheduler-{i}");

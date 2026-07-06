@@ -144,6 +144,7 @@ fn test_transactions_sending() {
                 num_transactions: None,
                 target_tps: Some(NonZeroU64::new(10).unwrap()),
                 initial_congestion_window: None,
+                drain_seconds: 0,
                 num_max_open_connections: 1,
                 workers_pull_size: 1,
                 send_fanout: 1,
