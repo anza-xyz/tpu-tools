@@ -282,6 +282,7 @@ pub async fn run_client(
         priority_fee_stats.clone(),
         send_batch_size,
         execution_params.duration,
+        execution_params.num_transactions,
         execution_params.target_tps,
         workers_pull_size,
     );

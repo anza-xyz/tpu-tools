@@ -171,6 +171,14 @@ pub struct ExecutionParams {
     #[clap(
         long,
         value_parser = value_parser!(NonZeroU64),
+        help = "If specified, limits the benchmark to sending this many transactions. May be \
+                combined with --duration; whichever limit is reached first stops the run."
+    )]
+    pub num_transactions: Option<NonZeroU64>,
+
+    #[clap(
+        long,
+        value_parser = value_parser!(NonZeroU64),
         help = "Optional global target send rate in transactions per second. When set, \
                 transaction-bench switches to paced sending."
     )]
@@ -460,6 +468,7 @@ mod tests {
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
                 endpoint_configs: vec![],
                 duration: Some(Duration::from_secs(120)),
+                num_transactions: None,
                 target_tps: None,
                 leader_tracker: LeaderTracker::PinnedLeaderTracker {
                     address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8009),
