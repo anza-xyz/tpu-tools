@@ -382,7 +382,9 @@ async fn build_schedulers(
                 connect: execution_params.send_fanout.saturating_add(1),
             },
             skip_check_transaction_age: false,
-            override_initial_congestion_window: None,
+            override_initial_congestion_window: execution_params
+                .initial_congestion_window
+                .map(NonZeroU64::get),
         };
 
         let (_, update_identity_receiver) = watch::channel(None);
