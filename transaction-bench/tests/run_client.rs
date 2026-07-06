@@ -141,6 +141,7 @@ fn test_transactions_sending() {
                 staked_identity_files: vec![],
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
                 duration: Some(Duration::from_secs(2)),
+                num_transactions: None,
                 target_tps: Some(NonZeroU64::new(10).unwrap()),
                 num_max_open_connections: 1,
                 workers_pull_size: 1,
