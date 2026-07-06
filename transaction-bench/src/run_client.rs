@@ -272,6 +272,11 @@ pub async fn run_client(
         transaction_receivers.push(receiver);
     }
 
+    // Retain a clone of the senders past the generator so the scheduler
+    // channels stay open during the drain phase (see below); the generator
+    // drops its own copies when it finishes.
+    let drain_senders = transaction_senders.clone();
+
     let transaction_generator = TransactionGenerator::new(
         accounts,
         blockhash_receiver,
@@ -318,6 +323,20 @@ pub async fn run_client(
     }
 
     join_service(transaction_generator_task_handle, "TransactionGenerator").await?;
+
+    // The generator has dropped its senders. Keep our retained clones alive for
+    // the drain window so the schedulers don't tear down while tpu-client-next's
+    // worker queues and quinn send buffers still hold in-flight transactions.
+    if execution_params.drain_seconds > 0 {
+        info!(
+            "Generator finished; draining in-flight transactions for {}s.",
+            execution_params.drain_seconds
+        );
+        tokio::time::sleep(Duration::from_secs(execution_params.drain_seconds)).await;
+    }
+    // Closing the channels lets the tpu-client-next instances shut down.
+    drop(drain_senders);
+
     join_service(blockhash_task_handle, "BlockhashUpdater").await?;
     for (i, handle) in scheduler_handles.into_iter().enumerate() {
         let name = format!("Scheduler-{i}");
