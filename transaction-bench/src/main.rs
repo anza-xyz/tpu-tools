@@ -331,6 +331,7 @@ mod tests {
                     bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
                     duration: None,
                     num_transactions: None,
+                    blockhash_stale_secs: 0,
                     target_tps: None,
                     initial_congestion_window: None,
                     drain_seconds: 0,

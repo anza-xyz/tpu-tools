@@ -236,6 +236,54 @@ args=(
 solana-transaction-bench "${args[@]}"
 ```
 
+#### Forcing Transaction Expiry (queue-discard stress test)
+
+Use `--blockhash-stale-secs` to sign transactions with a deliberately aged blockhash instead of the
+freshest one. By default the tool uses the latest blockhash, so transactions carry the full validity
+window (the validator rejects a transaction once its blockhash is more than 150 blocks old) and
+effectively never expire while queued. With a non-zero value, the blockhash updater observes the
+`getLatestBlockhash` stream over time (a delay line) and publishes the blockhash that was latest
+that many *seconds* ago, so the signed blockhash stays a constant age as the chain advances.
+
+This stresses the validator's discard-on-age path.
+
+Staleness is expressed in seconds — not slots — so it can be derived purely from
+`getLatestBlockhash`, which every RPC serves. It deliberately avoids `getBlock`: on agave that
+requires `--enable-rpc-transaction-history`, whose RocksDB write amplification can itself slow the
+validator under load and skew the test. The tool **primes for that many seconds before it starts
+sending**, so every transaction is uniformly aged from the first one (no warmup ramp) and the
+`--duration` clock starts after priming.
+
+Say, you want to create transactions that expire while sitting on the scheduler's queue.
+Set `--blockhash-stale-secs` just under the validity window — `150 blocks × slot_time`
+(e.g. ~22s at ~150ms slots, ~60s at 400ms). Larger values leave fewer blocks of validity,
+so buffered transactions expire sooner, but a value at or above the window makes them
+arrive already-expired and get dropped at ingestion (never queued) instead.
+
+Tune empirically against the validator's banking-stage scheduler metrics:
+* `num_dropped_on_clean` increasing — transactions were buffered and then discarded on age.
+*  This is the behavior you want to maximize.
+* `num_dropped_on_receive_age` increasing — transactions were already expired on arrival and
+  dropped at ingestion. Lower `--blockhash-stale-secs` if this dominates.
+* transactions executing normally — the blockhash is still too fresh; raise the value.
+
+Use plenty of payers and a high send rate so the queue stays deep.
+
+```shell
+args=(
+  -u "$URL"
+  read-accounts-run
+  --accounts-file accounts.json
+  --duration 120
+  --blockhash-stale-secs 55
+  --target-tps 50000
+  --staked-identity-file "$VALIDATOR_IDENTITY"
+  --send-fanout 1
+  ws-leader-tracker
+)
+solana-transaction-bench "${args[@]}"
+```
+
 #### Use yellowstone-grpc
 
 Use `yellowstone-leader-tracker` when you want to receive slot updates from a Yellowstone gRPC

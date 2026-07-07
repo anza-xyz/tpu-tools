@@ -1,13 +1,16 @@
 //! Background blockhash refresh for transaction generators.
 //!
-//! The updater polls RPC for the latest blockhash and sends changes through a
-//! [`tokio::sync::watch`] channel.
+//! The updater polls RPC and publishes blockhashes through a [`tokio::sync::watch`]
+//! channel. By default it publishes the freshest blockhash. When configured with a
+//! non-zero `stale_secs`, it instead publishes the blockhash that was latest that long
+//! ago. One use case is creating already-expired transactions to exercise the scheduler's
+//! discard-on-age path.
 
 use {
     log::*,
     solana_hash::Hash,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
-    std::sync::Arc,
+    std::{collections::VecDeque, sync::Arc},
     thiserror::Error,
     tokio::{
         sync::watch,
@@ -46,26 +49,51 @@ pub enum BlockhashUpdaterError {
     BlockhashStuck,
 }
 
-/// Polls RPC for fresh blockhashes and publishes them to a watch channel.
+/// Polls RPC for blockhashes and publishes them to a watch channel.
 ///
-/// The updater exits when all receivers for the watch channel have been
-/// dropped, or returns [`BlockhashUpdaterError::BlockhashStuck`] if RPC keeps
-/// failing or returns the same blockhash for too long.
+/// With `stale_secs == None` it publishes the latest blockhash. With `stale_secs` set it
+/// publishes the blockhash that was latest roughly that long ago (a delay line of observed
+/// blockhashes), so the published blockhash stays a constant age as the tip advances.
+///
+/// The updater exits when all receivers for the watch channel have been dropped, or returns
+/// [`BlockhashUpdaterError::BlockhashStuck`] if RPC keeps failing (or returns the same
+/// blockhash) for too long.
 pub struct BlockhashUpdater {
     rpc_client: Arc<RpcClient>,
     sender: watch::Sender<Hash>,
     config: BlockhashUpdaterConfig,
     last_blockhash: Hash,
+    stale_secs: Option<Duration>,
 }
 
 impl BlockhashUpdater {
-    /// Creates a blockhash updater using the default polling intervals.
+    /// Creates a blockhash updater that always publishes the freshest blockhash.
     pub fn new(rpc_client: Arc<RpcClient>, sender: watch::Sender<Hash>) -> Self {
         Self {
             rpc_client,
             sender,
             config: BlockhashUpdaterConfig::default(),
             last_blockhash: Hash::default(),
+            stale_secs: None,
+        }
+    }
+
+    /// Creates a delay-line updater that publishes the blockhash that was latest roughly
+    /// `stale_secs` ago. It uses only `getLatestBlockhash`, so it needs nothing special on
+    /// the target RPC (no `getBlock` / `--enable-rpc-transaction-history`). The published
+    /// staleness ramps up from fresh over the first `stale_secs` of observation (warmup);
+    /// callers should prime for `stale_secs` before relying on it.
+    pub fn with_stale_secs(
+        rpc_client: Arc<RpcClient>,
+        sender: watch::Sender<Hash>,
+        stale_secs: Duration,
+    ) -> Self {
+        Self {
+            rpc_client,
+            sender,
+            config: BlockhashUpdaterConfig::default(),
+            last_blockhash: Hash::default(),
+            stale_secs: Some(stale_secs),
         }
     }
 
@@ -80,12 +108,16 @@ impl BlockhashUpdater {
             sender,
             config,
             last_blockhash: Hash::default(),
+            stale_secs: None,
         }
     }
 
     /// Runs the updater until the watch channel is closed or the blockhash is
     /// considered stuck.
     pub async fn run(mut self) -> Result<(), BlockhashUpdaterError> {
+        if let Some(stale_for) = self.stale_secs {
+            return self.run_delay_line(stale_for).await;
+        }
         let mut blockhash_last_updated = Instant::now();
         let mut last_error_log = Instant::now();
         let mut interval = time::interval(self.config.update_interval);
@@ -113,6 +145,72 @@ impl BlockhashUpdater {
         }
         Ok(())
     }
+
+    /// Delay-line loop backing [`BlockhashUpdater::with_stale_secs`]: record observed
+    /// blockhashes and publish the one that was latest ~`stale_for` ago (selection and warmup
+    /// behavior in [`select_aged_blockhash`]).
+    async fn run_delay_line(mut self, stale_for: Duration) -> Result<(), BlockhashUpdaterError> {
+        let mut fetch_last_updated = Instant::now();
+        let mut last_error_log = Instant::now();
+        let mut interval = time::interval(self.config.update_interval);
+        let mut history: VecDeque<(Instant, Hash)> = VecDeque::new();
+        while !self.sender.is_closed() {
+            interval.tick().await;
+            let now = Instant::now();
+
+            if let Ok(hash) = self.rpc_client.get_latest_blockhash().await {
+                if history.back().map(|(_, h)| *h) != Some(hash) {
+                    history.push_back((now, hash));
+                }
+                fetch_last_updated = now;
+            }
+            prune_history(&mut history, now, stale_for);
+
+            if let Some(selected) = select_aged_blockhash(&history, now, stale_for)
+                && selected != self.last_blockhash
+            {
+                self.last_blockhash = selected;
+                if self.sender.send(selected).is_err() {
+                    break;
+                }
+            }
+
+            // Stuck detection tracks successful fetches, independent of the delayed output.
+            if fetch_last_updated.elapsed() > self.config.stuck_interval {
+                return Err(BlockhashUpdaterError::BlockhashStuck);
+            } else if fetch_last_updated.elapsed() > self.config.not_updating_interval
+                && last_error_log.elapsed() >= self.config.error_report_interval
+            {
+                last_error_log = now;
+                let last_updated_s = fetch_last_updated.elapsed().as_secs();
+                warn!("Blockhash is not updating for {last_updated_s} s.");
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Returns the blockhash that was latest approximately `stale_for` ago: the newest history
+/// entry whose age is at least `stale_for`, or — during warmup, before any entry is that old —
+/// the oldest entry, so the published age ramps up toward `stale_for`.
+fn select_aged_blockhash(
+    history: &VecDeque<(Instant, Hash)>,
+    now: Instant,
+    stale_for: Duration,
+) -> Option<Hash> {
+    history
+        .iter()
+        .rev()
+        .find(|(t, _)| now.saturating_duration_since(*t) >= stale_for)
+        .or_else(|| history.front())
+        .map(|(_, h)| *h)
+}
+
+/// Drops history entries older than the one in effect `stale_for` ago, keeping at least one.
+fn prune_history(history: &mut VecDeque<(Instant, Hash)>, now: Instant, stale_for: Duration) {
+    while history.len() > 1 && now.saturating_duration_since(history[1].0) >= stale_for {
+        history.pop_front();
+    }
 }
 
 #[cfg(test)]
@@ -138,6 +236,70 @@ mod tests {
             not_updating_interval: Duration::from_millis(300),
             error_report_interval: Duration::from_millis(1000),
         }
+    }
+
+    // `Instant + Duration` trips `clippy::arithmetic_side_effects`; go through `checked_add`.
+    fn at(base: Instant, secs: u64) -> Instant {
+        base.checked_add(Duration::from_secs(secs))
+            .expect("instant within range")
+    }
+
+    fn make_history(base: Instant, count: u8) -> (VecDeque<(Instant, Hash)>, Vec<Hash>) {
+        let hashes: Vec<Hash> = (0..count).map(|i| hash(&[i])).collect();
+        let history = hashes
+            .iter()
+            .enumerate()
+            .map(|(i, h)| (at(base, i as u64), *h))
+            .collect();
+        (history, hashes)
+    }
+
+    #[test]
+    fn test_select_aged_blockhash_steady_state() {
+        let base = Instant::now();
+        let (history, hashes) = make_history(base, 10); // entries at base+0s..base+9s
+        let now = at(base, 9);
+        // 5s of staleness at t=9s selects the blockhash that was latest at t=4s.
+        assert_eq!(
+            select_aged_blockhash(&history, now, Duration::from_secs(5)),
+            Some(hashes[4])
+        );
+    }
+
+    #[test]
+    fn test_select_aged_blockhash_warmup_falls_back_to_oldest() {
+        let base = Instant::now();
+        let (history, hashes) = make_history(base, 2); // only 2s of history
+        let now = at(base, 2);
+        // Want 5s but only have 2s: ramp by returning the oldest observed blockhash.
+        assert_eq!(
+            select_aged_blockhash(&history, now, Duration::from_secs(5)),
+            Some(hashes[0])
+        );
+    }
+
+    #[test]
+    fn test_select_aged_blockhash_empty() {
+        let history = VecDeque::new();
+        assert_eq!(
+            select_aged_blockhash(&history, Instant::now(), Duration::from_secs(5)),
+            None
+        );
+    }
+
+    #[test]
+    fn test_prune_history_keeps_selectable_window() {
+        let base = Instant::now();
+        let (mut history, hashes) = make_history(base, 10);
+        let now = at(base, 9);
+        prune_history(&mut history, now, Duration::from_secs(5));
+        // The entry latest 5s ago (t=4s) survives as the new front, and pruning does not
+        // change which blockhash gets selected.
+        assert_eq!(history.front().map(|(_, h)| *h), Some(hashes[4]));
+        assert_eq!(
+            select_aged_blockhash(&history, now, Duration::from_secs(5)),
+            Some(hashes[4])
+        );
     }
 
     #[tokio::test]

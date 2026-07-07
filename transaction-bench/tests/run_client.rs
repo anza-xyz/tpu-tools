@@ -142,6 +142,7 @@ fn test_transactions_sending() {
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
                 duration: Some(Duration::from_secs(2)),
                 num_transactions: None,
+                blockhash_stale_secs: 0,
                 target_tps: Some(NonZeroU64::new(10).unwrap()),
                 initial_congestion_window: None,
                 drain_seconds: 0,

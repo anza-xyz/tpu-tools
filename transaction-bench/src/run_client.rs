@@ -136,6 +136,7 @@ pub async fn run_client(
         bind,
         duration,
         num_transactions,
+        blockhash_stale_secs,
         target_tps,
         initial_congestion_window,
         drain_seconds,
@@ -247,9 +248,28 @@ pub async fn run_client(
         .await
         .expect("Blockhash request should not fail.");
     let (blockhash_sender, blockhash_receiver) = watch::channel(blockhash);
-    let blockhash_updater = BlockhashUpdater::new(rpc_client.clone(), blockhash_sender);
+    let blockhash_updater = if blockhash_stale_secs > 0 {
+        info!("Signing transactions with a blockhash ~{blockhash_stale_secs}s old (delay line).");
+        BlockhashUpdater::with_stale_secs(
+            rpc_client.clone(),
+            blockhash_sender,
+            Duration::from_secs(blockhash_stale_secs),
+        )
+    } else {
+        BlockhashUpdater::new(rpc_client.clone(), blockhash_sender)
+    };
 
     let blockhash_task_handle = tokio::spawn(async move { blockhash_updater.run().await });
+
+    // Prime the delay line before sending so the first transaction is already fully aged, not
+    // fresh. The extra margin absorbs poll jitter; the --duration clock starts after priming.
+    if blockhash_stale_secs > 0 {
+        let prime_for =
+            Duration::from_secs(blockhash_stale_secs).saturating_add(Duration::from_secs(2));
+        info!("Priming blockhash delay line for ~{blockhash_stale_secs}s before sending...");
+        tokio::time::sleep(prime_for).await;
+        info!("Blockhash delay line primed; starting transaction generator.");
+    }
 
     // Create N channels, one per tpu-client-next instance.
     let mut transaction_senders = Vec::with_capacity(num_tpu_clients);

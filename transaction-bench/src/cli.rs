@@ -145,6 +145,22 @@ pub struct ExecutionParams {
 
     #[clap(
         long,
+        default_value_t = 0,
+        help = "Sign transactions with a blockhash this many SECONDS old instead of the freshest \
+                one. 0 (default) uses fresh blockhashes.\nThis uses only getLatestBlockhash (a \
+                delay line of observed blockhashes), so it needs nothing special on the target \
+                (no getBlock / --enable-rpc-transaction-history, whose RocksDB write \
+                amplification can skew single-validator runs). The tool primes for this many \
+                seconds before it starts sending, so every transaction is uniformly aged from the \
+                first one. Set it just under the validity window (150 blocks x slot_time, e.g. \
+                ~22s at ~150ms slots or ~60s at 400ms) so transactions expire shortly after being \
+                buffered, stressing the scheduler's discard-on-age path. Tune by watching the \
+                validator's num_dropped_on_clean (good) vs num_dropped_on_receive_age (too stale)."
+    )]
+    pub blockhash_stale_secs: u64,
+
+    #[clap(
+        long,
         value_parser = value_parser!(NonZeroU64),
         help = "Optional global target send rate in transactions per second. When set, \
                 transaction-bench switches to paced sending."
@@ -418,6 +434,7 @@ mod tests {
                 bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
                 duration: Some(Duration::from_secs(120)),
                 num_transactions: None,
+                blockhash_stale_secs: 0,
                 target_tps: None,
                 initial_congestion_window: None,
                 drain_seconds: 0,
