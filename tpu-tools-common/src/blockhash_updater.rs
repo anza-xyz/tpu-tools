@@ -49,11 +49,49 @@ pub enum BlockhashUpdaterError {
     BlockhashStuck,
 }
 
-/// Polls RPC for blockhashes and publishes them to a watch channel.
-///
-/// With `stale_secs == None` it publishes the latest blockhash. With `stale_secs` set it
-/// publishes the blockhash that was latest roughly that long ago (a delay line of observed
-/// blockhashes), so the published blockhash stays a constant age as the tip advances.
+/// How the updater turns fetched blockhashes into published ones.
+enum Strategy {
+    /// Publish the freshest blockhash as observed.
+    Fresh,
+    /// Publish the blockhash that was latest roughly `stale_for` ago, from a delay
+    /// line of observed blockhashes, so the published blockhash stays a constant
+    /// age as the tip advances.
+    DelayLine {
+        stale_for: Duration,
+        history: VecDeque<(Instant, Hash)>,
+    },
+}
+
+impl Strategy {
+    /// Digests a fetched blockhash and returns the hash to publish (`None` when
+    /// there is nothing new relative to `last`) along with whether this
+    /// observation counts as progress for stuck detection. Both strategies make
+    /// progress only when the observed tip advances, so a chain that stops
+    /// producing blockhashes is reported stuck even while RPC keeps responding.
+    /// For `DelayLine` the tip is tracked by the history, not by `last`, whose
+    /// published output deliberately lags.
+    fn observe(&mut self, now: Instant, fetched: Hash, last: Hash) -> (Option<Hash>, bool) {
+        match self {
+            Self::Fresh => {
+                let changed = fetched != last;
+                (changed.then_some(fetched), changed)
+            }
+            Self::DelayLine { stale_for, history } => {
+                let tip_advanced = history.back().map(|(_, h)| *h) != Some(fetched);
+                if tip_advanced {
+                    history.push_back((now, fetched));
+                }
+                prune_history(history, now, *stale_for);
+                let selected =
+                    select_aged_blockhash(history, now, *stale_for).filter(|hash| *hash != last);
+                (selected, tip_advanced)
+            }
+        }
+    }
+}
+
+/// Polls RPC for blockhashes and publishes them to a watch channel, selecting what to
+/// publish according to a [`Strategy`].
 ///
 /// The updater exits when all receivers for the watch channel have been dropped, or returns
 /// [`BlockhashUpdaterError::BlockhashStuck`] if RPC keeps failing (or returns the same
@@ -63,7 +101,7 @@ pub struct BlockhashUpdater {
     sender: watch::Sender<Hash>,
     config: BlockhashUpdaterConfig,
     last_blockhash: Hash,
-    stale_secs: Option<Duration>,
+    strategy: Strategy,
 }
 
 impl BlockhashUpdater {
@@ -74,7 +112,7 @@ impl BlockhashUpdater {
             sender,
             config: BlockhashUpdaterConfig::default(),
             last_blockhash: Hash::default(),
-            stale_secs: None,
+            strategy: Strategy::Fresh,
         }
     }
 
@@ -93,7 +131,10 @@ impl BlockhashUpdater {
             sender,
             config: BlockhashUpdaterConfig::default(),
             last_blockhash: Hash::default(),
-            stale_secs: Some(stale_secs),
+            strategy: Strategy::DelayLine {
+                stale_for: stale_secs,
+                history: VecDeque::new(),
+            },
         }
     }
 
@@ -108,31 +149,33 @@ impl BlockhashUpdater {
             sender,
             config,
             last_blockhash: Hash::default(),
-            stale_secs: None,
+            strategy: Strategy::Fresh,
         }
     }
 
     /// Runs the updater until the watch channel is closed or the blockhash is
     /// considered stuck.
     pub async fn run(mut self) -> Result<(), BlockhashUpdaterError> {
-        if let Some(stale_for) = self.stale_secs {
-            return self.run_delay_line(stale_for).await;
-        }
         let mut blockhash_last_updated = Instant::now();
         let mut last_error_log = Instant::now();
         let mut interval = time::interval(self.config.update_interval);
         while !self.sender.is_closed() {
             interval.tick().await;
+            let now = Instant::now();
 
-            if let Ok(new_blockhash) = self.rpc_client.get_latest_blockhash().await
-                && new_blockhash != self.last_blockhash
-            {
-                self.last_blockhash = new_blockhash;
-                if self.sender.send(new_blockhash).is_err() {
-                    break;
+            if let Ok(fetched) = self.rpc_client.get_latest_blockhash().await {
+                let (publish, progress) = self.strategy.observe(now, fetched, self.last_blockhash);
+                if let Some(hash) = publish {
+                    self.last_blockhash = hash;
+                    if self.sender.send(hash).is_err() {
+                        break;
+                    }
                 }
-                blockhash_last_updated = Instant::now();
+                if progress {
+                    blockhash_last_updated = now;
+                }
             }
+
             if blockhash_last_updated.elapsed() > self.config.stuck_interval {
                 return Err(BlockhashUpdaterError::BlockhashStuck);
             } else if blockhash_last_updated.elapsed() > self.config.not_updating_interval
@@ -140,49 +183,6 @@ impl BlockhashUpdater {
             {
                 last_error_log = Instant::now();
                 let last_updated_s = blockhash_last_updated.elapsed().as_secs();
-                warn!("Blockhash is not updating for {last_updated_s} s.");
-            }
-        }
-        Ok(())
-    }
-
-    /// Delay-line loop backing [`BlockhashUpdater::with_stale_secs`]: record observed
-    /// blockhashes and publish the one that was latest ~`stale_for` ago (selection and warmup
-    /// behavior in [`select_aged_blockhash`]).
-    async fn run_delay_line(mut self, stale_for: Duration) -> Result<(), BlockhashUpdaterError> {
-        let mut fetch_last_updated = Instant::now();
-        let mut last_error_log = Instant::now();
-        let mut interval = time::interval(self.config.update_interval);
-        let mut history: VecDeque<(Instant, Hash)> = VecDeque::new();
-        while !self.sender.is_closed() {
-            interval.tick().await;
-            let now = Instant::now();
-
-            if let Ok(hash) = self.rpc_client.get_latest_blockhash().await {
-                if history.back().map(|(_, h)| *h) != Some(hash) {
-                    history.push_back((now, hash));
-                }
-                fetch_last_updated = now;
-            }
-            prune_history(&mut history, now, stale_for);
-
-            if let Some(selected) = select_aged_blockhash(&history, now, stale_for)
-                && selected != self.last_blockhash
-            {
-                self.last_blockhash = selected;
-                if self.sender.send(selected).is_err() {
-                    break;
-                }
-            }
-
-            // Stuck detection tracks successful fetches, independent of the delayed output.
-            if fetch_last_updated.elapsed() > self.config.stuck_interval {
-                return Err(BlockhashUpdaterError::BlockhashStuck);
-            } else if fetch_last_updated.elapsed() > self.config.not_updating_interval
-                && last_error_log.elapsed() >= self.config.error_report_interval
-            {
-                last_error_log = now;
-                let last_updated_s = fetch_last_updated.elapsed().as_secs();
                 warn!("Blockhash is not updating for {last_updated_s} s.");
             }
         }
@@ -299,6 +299,43 @@ mod tests {
         assert_eq!(
             select_aged_blockhash(&history, now, Duration::from_secs(5)),
             Some(hashes[4])
+        );
+    }
+
+    #[test]
+    fn test_fresh_strategy_observe() {
+        let mut strategy = Strategy::Fresh;
+        let now = Instant::now();
+        let last = hash(&[0]);
+        let fetched = hash(&[1]);
+        // A changed blockhash is published and counts as progress.
+        assert_eq!(strategy.observe(now, fetched, last), (Some(fetched), true));
+        // An unchanged blockhash is neither published nor progress.
+        assert_eq!(strategy.observe(now, fetched, fetched), (None, false));
+    }
+
+    #[test]
+    fn test_delay_line_strategy_observe() {
+        let base = Instant::now();
+        let mut strategy = Strategy::DelayLine {
+            stale_for: Duration::from_secs(5),
+            history: VecDeque::new(),
+        };
+        let first = hash(&[0]);
+        let second = hash(&[1]);
+        // Warmup: the first observation is published (oldest-entry fallback).
+        assert_eq!(
+            strategy.observe(base, first, Hash::default()),
+            (Some(first), true)
+        );
+        // Nothing new to publish while the delay line fills, but the advancing
+        // tip counts as progress.
+        assert_eq!(strategy.observe(at(base, 1), second, first), (None, true));
+        // Once the second entry is stale_for old, it becomes the publish
+        // candidate; an unchanged tip is no longer progress.
+        assert_eq!(
+            strategy.observe(at(base, 6), second, first),
+            (Some(second), false)
         );
     }
 
