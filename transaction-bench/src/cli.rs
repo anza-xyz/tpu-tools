@@ -164,7 +164,8 @@ pub struct ExecutionParams {
     #[clap(
         long,
         value_parser = parse_duration,
-        help = "If specified, limits the benchmark execution to the specified duration."
+        help = "If specified, limits the benchmark execution to the specified duration. May be \
+                combined with --num-transactions; whichever limit is reached first stops the run."
     )]
     pub duration: Option<Duration>,
 
