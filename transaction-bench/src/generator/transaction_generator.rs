@@ -118,21 +118,23 @@ impl TransactionGenerator {
         let mut sender_index: usize = 0;
         let start = Instant::now();
         let mut next_batch_at = self.target_tps.map(|_| start);
-        let num_transactions_budget = self.num_transactions.map(|n| n.get());
         let mut txs_scheduled: u64 = 0;
         loop {
-            if let Some(run_duration) = self.run_duration
-                && start.elapsed() >= run_duration
+            let stop_reason = if self
+                .run_duration
+                .is_some_and(|run_duration| start.elapsed() >= run_duration)
             {
-                info!("Transaction generator is stopping: duration reached.");
-                while let Some(result) = futures.join_next().await {
-                    debug!("Future result {result:?}");
-                }
-                break;
-            }
-
-            if num_transactions_budget.is_some_and(|budget| txs_scheduled >= budget) {
-                info!("Transaction generator is stopping: requested tx count reached.");
+                Some("duration reached")
+            } else if self
+                .num_transactions
+                .is_some_and(|budget| txs_scheduled >= budget.get())
+            {
+                Some("requested tx count reached")
+            } else {
+                None
+            };
+            if let Some(stop_reason) = stop_reason {
+                info!("Transaction generator is stopping: {stop_reason}.");
                 while let Some(result) = futures.join_next().await {
                     debug!("Future result {result:?}");
                 }
@@ -148,16 +150,10 @@ impl TransactionGenerator {
                 if let Some(next_batch_deadline) = next_batch_at {
                     tokio::time::sleep_until(next_batch_deadline).await;
                 }
-                let send_batch_size = match num_transactions_budget {
-                    Some(budget) => {
-                        let remaining = budget.saturating_sub(txs_scheduled);
-                        if remaining == 0 {
-                            break;
-                        }
-                        let remaining = usize::try_from(remaining).unwrap_or(usize::MAX);
-                        self.send_batch_size.min(remaining)
-                    }
-                    None => self.send_batch_size,
+                let Some(send_batch_size) =
+                    next_batch_size(self.num_transactions, self.send_batch_size, txs_scheduled)
+                else {
+                    break;
                 };
                 txs_scheduled = txs_scheduled.saturating_add(send_batch_size as u64);
                 let transaction_params = self.transaction_params.clone();
@@ -280,6 +276,21 @@ async fn send_batch(wired_txs_batch: Vec<Vec<u8>>, transactions_sender: Sender<T
         "Time to send into transactions queue: {} us",
         measure_send_to_queue.as_us()
     );
+}
+
+/// Number of transactions to schedule in the next batch, or `None` when the
+/// `--num-transactions` budget is exhausted.
+fn next_batch_size(
+    num_transactions: Option<NonZeroU64>,
+    send_batch_size: usize,
+    txs_scheduled: u64,
+) -> Option<usize> {
+    let Some(budget) = num_transactions else {
+        return Some(send_batch_size);
+    };
+    let remaining = budget.get().saturating_sub(txs_scheduled);
+    // The min() with send_batch_size makes the cast back to usize lossless.
+    (remaining > 0).then(|| remaining.min(send_batch_size as u64) as usize)
 }
 
 #[allow(clippy::arithmetic_side_effects)]
