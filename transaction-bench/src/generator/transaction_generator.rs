@@ -120,20 +120,12 @@ impl TransactionGenerator {
         let mut next_batch_at = self.target_tps.map(|_| start);
         let mut txs_scheduled: u64 = 0;
         loop {
-            let stop_reason = if self
-                .run_duration
-                .is_some_and(|run_duration| start.elapsed() >= run_duration)
-            {
-                Some("duration reached")
-            } else if self
-                .num_transactions
-                .is_some_and(|budget| txs_scheduled >= budget.get())
-            {
-                Some("requested tx count reached")
-            } else {
-                None
-            };
-            if let Some(stop_reason) = stop_reason {
+            if let Some(stop_reason) = stop_reason(
+                self.run_duration,
+                self.num_transactions,
+                start.elapsed(),
+                txs_scheduled,
+            ) {
                 info!("Transaction generator is stopping: {stop_reason}.");
                 while let Some(result) = futures.join_next().await {
                     debug!("Future result {result:?}");
@@ -276,6 +268,23 @@ async fn send_batch(wired_txs_batch: Vec<Vec<u8>>, transactions_sender: Sender<T
         "Time to send into transactions queue: {} us",
         measure_send_to_queue.as_us()
     );
+}
+
+/// Returns the reason the generator should stop, if a configured limit
+/// (`--duration` or `--num-transactions`) has been reached.
+fn stop_reason(
+    run_duration: Option<Duration>,
+    num_transactions: Option<NonZeroU64>,
+    elapsed: Duration,
+    txs_scheduled: u64,
+) -> Option<&'static str> {
+    if run_duration.is_some_and(|run_duration| elapsed >= run_duration) {
+        Some("duration reached")
+    } else if num_transactions.is_some_and(|budget| txs_scheduled >= budget.get()) {
+        Some("requested tx count reached")
+    } else {
+        None
+    }
 }
 
 /// Number of transactions to schedule in the next batch, or `None` when the
