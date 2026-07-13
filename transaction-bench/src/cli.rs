@@ -152,8 +152,9 @@ pub struct ExecutionParams {
     pub bind: SocketAddr,
 
     #[clap(
-        long,
+        long = "endpoint-config",
         value_parser = parse_endpoint_config,
+        conflicts_with_all = ["bind", "staked_identity_files"],
         help = "Endpoint configuration in the form <bind>[,<staked_identity_file>]. Can be \
                 repeated to use several endpoints, each with its own optional keypair. Cannot be \
                 combined with --bind or --staked-identity-file."

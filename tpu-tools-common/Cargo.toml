@@ -40,7 +40,11 @@ solana-sdk-ids = { workspace = true }
 solana-signer = { workspace = true }
 solana-system-interface = { workspace = true }
 solana-tpu-client = { workspace = true }
-solana-tpu-client-next = { workspace = true, features = ["agave-unstable-api", "metrics", "websocket-node-address-service"] }
+solana-tpu-client-next = { workspace = true, features = [
+    "agave-unstable-api",
+    "metrics",
+    "websocket-node-address-service",
+] }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

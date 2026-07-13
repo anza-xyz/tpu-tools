@@ -329,6 +329,7 @@ mod tests {
                 execution_params: ExecutionParams {
                     staked_identity_files: vec![],
                     bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                    endpoint_configs: vec![],
                     duration: None,
                     target_tps: None,
                     num_max_open_connections: 1,

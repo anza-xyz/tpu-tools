@@ -39,7 +39,6 @@ solana-keypair = { workspace = true }
 solana-measure = { workspace = true }
 solana-message = { workspace = true }
 solana-metrics = { workspace = true }
-solana-net-utils = { workspace = true }
 solana-pubkey = { workspace = true }
 solana-quic-definitions = { workspace = true }
 solana-rent = { workspace = true }
@@ -66,6 +65,7 @@ crossbeam-channel = { workspace = true }
 solana-faucet = { workspace = true, features = ["dev-context-only-utils"] }
 solana-fee-calculator = { workspace = true }
 solana-native-token = { workspace = true }
+solana-net-utils = { workspace = true }
 solana-pubsub-client = { workspace = true }
 solana-rpc = { workspace = true }
 solana-streamer = { workspace = true, features = ["dev-context-only-utils"] }

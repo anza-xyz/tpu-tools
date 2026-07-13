@@ -8,7 +8,6 @@ use {
     },
     log::*,
     solana_keypair::Keypair,
-    solana_net_utils::sockets::bind_to,
     solana_pubkey::Pubkey,
     solana_quic_definitions::{
         QUIC_MAX_STAKED_CONCURRENT_STREAMS, QUIC_MAX_UNSTAKED_CONCURRENT_STREAMS,
@@ -18,8 +17,12 @@ use {
     solana_signer::{EncodableKey, Signer},
     solana_streamer::nonblocking::quic::ConnectionPeerType,
     solana_tpu_client_next::{
-        Client, ClientBuilder, SendTransactionStats, TransactionSender,
-        node_address_service::LeaderTpuCacheServiceConfig, transaction_batch::TransactionBatch,
+        ConnectionWorkersScheduler, SendTransactionStats,
+        connection_workers_scheduler::{
+            BindTarget, ConnectionWorkersSchedulerConfig, Fanout, StakeIdentity,
+        },
+        node_address_service::LeaderTpuCacheServiceConfig,
+        transaction_batch::TransactionBatch,
     },
     solana_tpu_tools_common::{
         accounts_file::AccountsFile, blockhash_updater::BlockhashUpdater,
@@ -260,28 +263,19 @@ pub async fn run_client(
         .map_err(BenchClientError::InvalidCliArguments)?;
     let priority_fee_stats = Arc::new(PriorityFeeStats::default());
 
-    let leader_updater_config = LeaderTpuCacheServiceConfig {
-        lookahead_leaders: 4,
-        refresh_nodes_info_every: Duration::from_secs(30),
-        max_consecutive_failures: 5,
-    };
-    let (transaction_senders, clients, all_stats) = build_clients(
-        rpc_client.clone(),
-        websocket_url,
-        &execution_params,
-        endpoint_configs,
-        endpoint_identities,
-        leader_updater_config,
-        cancel.clone(),
-    )
-    .await?;
+    let num_endpoints = endpoint_configs.len();
+    let mut transaction_senders = Vec::with_capacity(num_endpoints);
+    let mut transaction_receivers = Vec::with_capacity(num_endpoints);
+    for _ in 0..num_endpoints {
+        let (sender, receiver) = mpsc::channel(GENERATOR_CHANNEL_SIZE);
+        transaction_senders.push(sender);
+        transaction_receivers.push(receiver);
+    }
 
-    let (generated_transaction_sender, generated_transaction_receiver) =
-        mpsc::channel(GENERATOR_CHANNEL_SIZE);
     let transaction_generator = TransactionGenerator::new(
         accounts,
         blockhash_receiver,
-        vec![generated_transaction_sender],
+        transaction_senders,
         transaction_params,
         execution_params.compute_unit_price,
         priority_fee_mode,
@@ -292,11 +286,25 @@ pub async fn run_client(
         workers_pull_size,
     );
 
+    let leader_updater_config = LeaderTpuCacheServiceConfig {
+        lookahead_leaders: 4,
+        refresh_nodes_info_every: Duration::from_secs(30),
+        max_consecutive_failures: 5,
+    };
+    let (scheduler_handles, all_stats) = build_schedulers(
+        rpc_client.clone(),
+        websocket_url,
+        &execution_params,
+        endpoint_configs,
+        endpoint_identities,
+        transaction_receivers,
+        leader_updater_config,
+        cancel.clone(),
+    )
+    .await?;
+
     let transaction_generator_task_handle =
         tokio::spawn(async move { transaction_generator.run().await });
-    let dispatcher_handle = tokio::spawn(async move {
-        dispatch_batches(generated_transaction_receiver, transaction_senders).await
-    });
     if let Some(stats_sender) = stats_sender
         && stats_sender
             .send(RunClientStats {
@@ -310,8 +318,10 @@ pub async fn run_client(
 
     join_service(transaction_generator_task_handle, "TransactionGenerator").await?;
     join_service(blockhash_task_handle, "BlockhashUpdater").await?;
-    join_service(dispatcher_handle, "Dispatcher").await?;
-    shutdown_clients(clients).await?;
+    for (i, handle) in scheduler_handles.into_iter().enumerate() {
+        let name = format!("Scheduler-{i}");
+        join_service(handle, &name).await?;
+    }
     Ok(())
 }
 
@@ -326,29 +336,29 @@ fn load_identity(endpoint_config: &EndpointConfig) -> Result<Option<Keypair>, Be
         .transpose()
 }
 
-async fn build_clients(
+async fn build_schedulers(
     rpc_client: Arc<RpcClient>,
     websocket_url: String,
     execution_params: &ExecutionParams,
     endpoint_configs: Vec<EndpointConfig>,
     endpoint_identities: Vec<Option<Keypair>>,
+    transaction_receivers: Vec<mpsc::Receiver<TransactionBatch>>,
     leader_updater_config: LeaderTpuCacheServiceConfig,
     cancel: CancellationToken,
 ) -> Result<
     (
-        Vec<TransactionSender>,
-        Vec<Client>,
+        Vec<JoinHandle<Result<(), BenchClientError>>>,
         Vec<Arc<SendTransactionStats>>,
     ),
     BenchClientError,
 > {
-    let mut transaction_senders = Vec::with_capacity(endpoint_configs.len());
-    let mut clients = Vec::with_capacity(endpoint_configs.len());
+    let mut scheduler_handles = Vec::with_capacity(endpoint_configs.len());
     let mut all_stats = Vec::with_capacity(endpoint_configs.len());
 
-    for (endpoint_config, validator_identity) in endpoint_configs
+    for ((endpoint_config, validator_identity), transaction_receiver) in endpoint_configs
         .into_iter()
-        .zip(endpoint_identities.into_iter())
+        .zip(endpoint_identities)
+        .zip(transaction_receivers)
     {
         let leader_updater = create_leader_updater(
             rpc_client.clone(),
@@ -359,72 +369,41 @@ async fn build_clients(
         )
         .await?;
 
-        let bind_socket =
-            bind_to(endpoint_config.bind.ip(), endpoint_config.bind.port()).map_err(|err| {
-                BenchClientError::InvalidCliArguments(format!(
-                    "failed to bind endpoint {}: {err}",
-                    endpoint_config.bind
-                ))
-            })?;
+        let stake_identity = validator_identity.as_ref().map(StakeIdentity::new);
+        let scheduler_config = ConnectionWorkersSchedulerConfig {
+            bind: BindTarget::Address(endpoint_config.bind),
+            stake_identity,
+            num_connections: execution_params.num_max_open_connections,
+            worker_channel_size: WORKER_CHANNEL_SIZE,
+            max_reconnect_attempts: MAX_RECONNECT_ATTEMPTS,
+            leaders_fanout: Fanout {
+                send: execution_params.send_fanout,
+                connect: execution_params.send_fanout.saturating_add(1),
+            },
+            skip_check_transaction_age: false,
+            override_initial_congestion_window: None,
+        };
 
-        let (stats_sender, stats_receiver) = oneshot::channel();
-        let (transaction_sender, client) = ClientBuilder::new(leader_updater)
-            .runtime_handle(tokio::runtime::Handle::current())
-            .bind_socket(bind_socket)
-            .leader_send_fanout(execution_params.send_fanout)
-            .identity(validator_identity.as_ref())
-            .max_cache_size(execution_params.num_max_open_connections)
-            .worker_channel_size(WORKER_CHANNEL_SIZE)
-            .sender_channel_size(GENERATOR_CHANNEL_SIZE)
-            .max_reconnect_attempts(MAX_RECONNECT_ATTEMPTS)
-            .cancel_token(cancel.child_token())
-            .broadcaster(BackpressuredBroadcaster {})
-            .metric_reporter(|stats, cancel| async move {
-                let _ = stats_sender.send(stats);
-                cancel.cancelled().await;
-            })
-            .build()?;
-        let stats = stats_receiver
-            .await
-            .map_err(|err| BenchClientError::TaskJoinFailure {
-                task_name: "StatsReporter".to_string(),
-                reason: err.to_string(),
-            })?;
+        let (_, update_identity_receiver) = watch::channel(None);
+        let scheduler = ConnectionWorkersScheduler::new(
+            leader_updater,
+            transaction_receiver,
+            update_identity_receiver,
+            cancel.clone(),
+        );
+        all_stats.push(scheduler.get_stats());
 
-        transaction_senders.push(transaction_sender);
-        clients.push(client);
-        all_stats.push(stats);
+        let scheduler_handle = tokio::spawn(async move {
+            let broadcaster = Box::new(BackpressuredBroadcaster {});
+            scheduler
+                .run_with_broadcaster(scheduler_config, broadcaster)
+                .await?;
+            Ok(())
+        });
+        scheduler_handles.push(scheduler_handle);
     }
 
-    Ok((transaction_senders, clients, all_stats))
-}
-
-async fn dispatch_batches(
-    mut transaction_receiver: mpsc::Receiver<TransactionBatch>,
-    transaction_senders: Vec<TransactionSender>,
-) -> Result<(), BenchClientError> {
-    let mut next_sender = 0usize;
-    let sender_count = transaction_senders.len();
-
-    while let Some(transaction_batch) = transaction_receiver.recv().await {
-        let wired_transactions: Vec<_> = transaction_batch.into_iter().collect();
-        transaction_senders[next_sender]
-            .send_transactions_in_batch(wired_transactions)
-            .await?;
-        next_sender = next_sender.saturating_add(1);
-        if next_sender == sender_count {
-            next_sender = 0;
-        }
-    }
-
-    Ok(())
-}
-
-async fn shutdown_clients(clients: Vec<Client>) -> Result<(), BenchClientError> {
-    for client in clients {
-        client.shutdown().await?;
-    }
-    Ok(())
+    Ok((scheduler_handles, all_stats))
 }
 
 #[allow(clippy::arithmetic_side_effects)]

@@ -1,10 +1,7 @@
 //! Meta error which wraps all the submodule errors.
 use {
     crate::generator::transaction_generator::TransactionGeneratorError,
-    solana_tpu_client_next::{
-        ConnectionWorkersSchedulerError,
-        client_builder::{ClientBuilderError, ClientError},
-    },
+    solana_tpu_client_next::ConnectionWorkersSchedulerError,
     solana_tpu_tools_common::{
         accounts_creator::Error as AccountsCreatorError,
         accounts_deleter::Error as AccountsDeleterError, accounts_file::Error as AccountsFileError,
@@ -23,12 +20,6 @@ pub enum BenchClientError {
 
     #[error(transparent)]
     ConnectionTasksSchedulerError(#[from] ConnectionWorkersSchedulerError),
-
-    #[error(transparent)]
-    ClientBuilderError(#[from] ClientBuilderError),
-
-    #[error(transparent)]
-    ClientError(#[from] ClientError),
 
     #[error("Failed to read keypair file")]
     KeypairReadFailure,
