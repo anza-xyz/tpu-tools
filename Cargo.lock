@@ -8754,6 +8754,7 @@ dependencies = [
  "solana-tpu-client-next",
  "solana-tpu-tools-common",
  "solana-transaction 4.0.0",
+ "solana-transaction-status",
  "spl-memo-interface",
  "thiserror 2.0.18",
  "tokio",

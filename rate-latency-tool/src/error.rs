@@ -1,6 +1,9 @@
 //! Meta error which wraps all the submodule errors.
 use {
-    crate::{csv_writer::CSVWriterError, yellowstone_subscriber::YellowstoneError},
+    crate::{
+        connection_stats_writer::ConnectionStatsWriterError, csv_writer::CSVWriterError,
+        yellowstone_subscriber::YellowstoneError,
+    },
     solana_tpu_client_next::ConnectionWorkersSchedulerError,
     solana_tpu_tools_common::{
         accounts_creator::Error as AccountsCreatorError, accounts_file::Error as AccountsFileError,
@@ -25,6 +28,9 @@ pub enum RateLatencyToolError {
 
     #[error(transparent)]
     CSVWriterError(#[from] CSVWriterError),
+
+    #[error(transparent)]
+    ConnectionStatsWriterError(#[from] ConnectionStatsWriterError),
 
     #[error(transparent)]
     YellowstoneError(#[from] YellowstoneError),

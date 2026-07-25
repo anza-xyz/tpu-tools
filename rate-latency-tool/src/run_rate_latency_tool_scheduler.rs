@@ -10,12 +10,12 @@ use {
         workers_cache::{WorkersCache, WorkersCacheError, shutdown_worker},
     },
     solana_tpu_tools_common::leader_updater::LeaderUpdaterWithSlot,
-    std::{sync::Arc, time::Duration},
+    std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration},
     tokio::time::interval,
     tokio_util::sync::CancellationToken,
 };
 
-pub async fn run_rate_latency_tool_scheduler<F, S>(
+pub async fn run_rate_latency_tool_scheduler<F, S, C>(
     rate: Duration,
     handshake_timeout: Duration,
     mut leader_updater: Box<dyn LeaderUpdaterWithSlot>,
@@ -33,10 +33,12 @@ pub async fn run_rate_latency_tool_scheduler<F, S>(
     cancel: CancellationToken,
     mut build_tx: F,
     mut send_record: S,
+    mut send_connection_stats: C,
 ) -> Result<Arc<SendTransactionStats>, ConnectionWorkersSchedulerError>
 where
     F: FnMut(Slot) -> (usize, Vec<u8>, CSVRecord),
     S: FnMut(CSVRecord),
+    C: FnMut(SocketAddr, &'static str),
 {
     assert!(
         worker_channel_size == 1,
@@ -46,6 +48,7 @@ where
 
     debug!("Client endpoint bind address: {:?}", endpoint.local_addr());
     let mut workers = WorkersCache::new(num_connections, cancel.clone());
+    let mut known_workers = HashSet::new();
 
     let mut ticker = interval(rate);
     let main_loop = async {
@@ -75,6 +78,7 @@ where
                 ) {
                     shutdown_worker(evicted_worker);
                 }
+                known_workers.insert(peer);
             }
 
             // the time to generate and send the transaction < 70us, the
@@ -116,6 +120,8 @@ where
                         );
                         // Remove the worker from the cache, if the peer has disconnected.
                         if let Some(pop_worker) = workers.pop(*new_leader) {
+                            known_workers.remove(new_leader);
+                            send_connection_stats(*new_leader, "receiver_dropped");
                             shutdown_worker(pop_worker)
                         }
                         TransactionSendStatus::ReceiverDropped
@@ -150,6 +156,9 @@ where
         () = cancel.cancelled() => (),
     }
 
+    for peer in known_workers {
+        send_connection_stats(peer, "shutdown");
+    }
     workers.shutdown().await;
 
     endpoint.close(0u32.into(), b"Closing connection");
