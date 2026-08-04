@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod connection_stats_writer;
 pub mod csv_writer;
 pub mod error;
 pub mod run_client;
