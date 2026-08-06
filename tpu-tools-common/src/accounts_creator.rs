@@ -367,7 +367,6 @@ mod tests {
     use {
         super::*,
         async_trait::async_trait,
-        rand::{Rng, SeedableRng, rngs::StdRng},
         solana_keypair::Keypair,
         solana_rpc_client::{
             mock_sender::MockSender,
@@ -375,28 +374,43 @@ mod tests {
             rpc_sender::{RpcSender, RpcTransportStats},
         },
         solana_rpc_client_api::request::RpcRequest,
-        std::sync::{Arc, Mutex},
+        std::{
+            collections::HashMap,
+            sync::{
+                Arc, Mutex,
+                atomic::{AtomicUsize, Ordering},
+            },
+        },
     };
 
-    /// RpcSender that randomly pick provided MockSenders to send request.
-    /// This allows to model different RPC conditions on testnet.
+    /// RpcSender that distributes transactions over MockSenders to model
+    /// different RPC conditions on testnet.
     struct MultiMockSender {
         mock_senders: Vec<MockSender>,
-        rng: Arc<Mutex<StdRng>>,
+        next_send_index: AtomicUsize,
+        signature_senders: Mutex<HashMap<String, usize>>,
     }
 
     impl MultiMockSender {
-        fn new(mock_senders: Vec<MockSender>, seed: u64) -> Self {
-            let rng = StdRng::seed_from_u64(seed);
+        fn new(mock_senders: Vec<MockSender>) -> Self {
             Self {
                 mock_senders,
-                rng: Arc::new(Mutex::new(rng)),
+                next_send_index: AtomicUsize::new(0),
+                signature_senders: Mutex::new(HashMap::new()),
             }
         }
 
-        fn get_random_index(&self) -> usize {
-            let mut rng = self.rng.lock().unwrap();
-            rng.gen_range(0..self.mock_senders.len())
+        fn get_next_send_index(&self) -> usize {
+            self.next_send_index.fetch_add(1, Ordering::Relaxed) % self.mock_senders.len()
+        }
+
+        fn get_status_index(&self, params: &serde_json::Value) -> Option<usize> {
+            let signature = params.as_array()?.first()?.as_array()?.first()?.as_str()?;
+            self.signature_senders
+                .lock()
+                .unwrap()
+                .get(signature)
+                .copied()
         }
     }
 
@@ -411,19 +425,35 @@ mod tests {
             request: RpcRequest,
             params: serde_json::Value,
         ) -> solana_rpc_client_api::client_error::Result<serde_json::Value> {
-            let index = self.get_random_index();
-            self.mock_senders[index].send(request, params).await
+            if request == RpcRequest::SendTransaction {
+                let index = self.get_next_send_index();
+                let result = self.mock_senders[index].send(request, params).await;
+                if let Ok(serde_json::Value::String(signature)) = &result {
+                    self.signature_senders
+                        .lock()
+                        .unwrap()
+                        .insert(signature.clone(), index);
+                }
+                return result;
+            }
+
+            if request == RpcRequest::GetSignatureStatuses
+                && let Some(index) = self.get_status_index(&params)
+            {
+                return self.mock_senders[index].send(request, params).await;
+            }
+
+            self.mock_senders[0].send(request, params).await
         }
 
         fn url(&self) -> String {
-            let index = self.get_random_index();
-            self.mock_senders[index].url()
+            self.mock_senders[0].url()
         }
     }
 
-    fn create_mock_rpc_client(urls: &[&str], seed: u64) -> RpcClient {
+    fn create_mock_rpc_client(urls: &[&str]) -> RpcClient {
         let mock_senders = urls.iter().map(MockSender::new).collect();
-        let sender = MultiMockSender::new(mock_senders, seed);
+        let sender = MultiMockSender::new(mock_senders);
         RpcClient::new_sender(sender, RpcClientConfig::default())
     }
 
@@ -514,8 +544,7 @@ mod tests {
     /// Combines a successful RPC endpoint with endpoint that always fails.
     #[tokio::test]
     async fn test_create_accounts_half_rpc_succeeds() {
-        let seed = 12345;
-        let rpc_client = Arc::new(create_mock_rpc_client(&["succeeds", "fails"], seed));
+        let rpc_client = Arc::new(create_mock_rpc_client(&["succeeds", "fails"]));
 
         let accounts = create_accounts(&rpc_client, &[Keypair::new()], 12, 1, 10).await;
 
@@ -526,18 +555,14 @@ mod tests {
     /// Combines a successful RPC endpoint with endpoints where the `getSignatureStatuses` RPC call returns different transaction errors.
     #[tokio::test]
     async fn test_create_accounts_transaction_errors() {
-        let seed = 12345;
-        let rpc_client = Arc::new(create_mock_rpc_client(
-            &[
-                "succeeds",
-                "succeeds",
-                "succeeds",
-                "account_in_use",
-                "instruction_error",
-                "sig_not_found",
-            ],
-            seed,
-        ));
+        let rpc_client = Arc::new(create_mock_rpc_client(&[
+            "succeeds",
+            "succeeds",
+            "succeeds",
+            "account_in_use",
+            "instruction_error",
+            "sig_not_found",
+        ]));
 
         let accounts = create_accounts(&rpc_client, &[Keypair::new()], 121, 1, 10).await;
 

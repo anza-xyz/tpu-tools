@@ -53,7 +53,7 @@ fn test_transactions_sending() {
     let test_validator = TestValidatorGenesis::default()
         .pubsub_config(PubSubConfig {
             enable_block_subscription: true,
-            ..PubSubConfig::default()
+            ..PubSubConfig::default_for_tests()
         })
         .rpc_config(JsonRpcConfig {
             enable_rpc_transaction_history: true,
@@ -62,8 +62,7 @@ fn test_transactions_sending() {
         })
         .fee_rate_governor(FeeRateGovernor::new(0, 0))
         .rent(Rent {
-            lamports_per_byte_year: 1,
-            exemption_threshold: 1.0,
+            lamports_per_byte: 1,
             ..Rent::default()
         })
         .faucet_addr(Some(faucet_addr))

@@ -127,6 +127,7 @@ fn build_request(payers_pubkeys: &[Pubkey], check_all_transactions: bool) -> Sub
                 account_include: payers_pubkeys.iter().map(|pk| pk.to_string()).collect(),
                 account_exclude: vec![],
                 account_required: vec![],
+                token_accounts: None,
             },
         );
     }

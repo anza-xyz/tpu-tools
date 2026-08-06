@@ -46,11 +46,16 @@ fn test_transactions_sending() {
     let mint_pubkey = mint_keypair.pubkey();
 
     let faucet_addr = run_local_faucet_with_unique_port_for_tests(mint_keypair);
+    let test_rent = Rent {
+        lamports_per_byte: 1,
+        ..Rent::default()
+    };
+    let payer_account_balance = test_rent.minimum_balance(0).saturating_add(100_000);
 
     let test_validator = TestValidatorGenesis::default()
         .pubsub_config(PubSubConfig {
             enable_block_subscription: true,
-            ..PubSubConfig::default()
+            ..PubSubConfig::default_for_tests()
         })
         .rpc_config(JsonRpcConfig {
             enable_rpc_transaction_history: true,
@@ -58,11 +63,7 @@ fn test_transactions_sending() {
             ..JsonRpcConfig::default_for_test()
         })
         .fee_rate_governor(FeeRateGovernor::new(0, 0))
-        .rent(Rent {
-            lamports_per_byte_year: 1,
-            exemption_threshold: 1.0,
-            ..Rent::default()
-        })
+        .rent(test_rent)
         .faucet_addr(Some(faucet_addr))
         .start_with_mint_address(mint_pubkey, SocketAddrSpace::Unspecified)
         .expect("validator start failed");
@@ -92,7 +93,7 @@ fn test_transactions_sending() {
     let cancel = CancellationToken::new();
     let stats = Arc::new(SendTransactionStats::default());
     let client_stats = stats.clone();
-    let handle = rt.spawn(async {
+    let handle = rt.spawn(async move {
         let funding_key = Keypair::new();
         let funding_pubkey = funding_key.pubkey();
         // fund the payer account
@@ -104,7 +105,7 @@ fn test_transactions_sending() {
         wait_for_balance(rpc_client.as_ref(), &funding_pubkey, 100_000_000).await;
         let account_params = AccountParams {
             num_payers: 16,
-            payer_account_balance: 1000,
+            payer_account_balance,
         };
 
         let accounts = create_ephemeral_accounts(

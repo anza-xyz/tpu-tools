@@ -6,10 +6,10 @@ use {
         priority_fee::{PriorityFeeMode, PriorityFeeStats},
     },
     log::*,
-    rand::{seq::SliceRandom, thread_rng},
+    rand::{rng, seq::SliceRandom},
     solana_hash::Hash,
     solana_measure::measure::Measure,
-    solana_tpu_client_next::transaction_batch::TransactionBatch,
+    solana_tpu_client_next::WireTransaction,
     solana_tpu_tools_common::accounts_file::AccountsFile,
     std::{num::NonZeroU64, sync::Arc},
     thiserror::Error,
@@ -36,7 +36,7 @@ pub enum TransactionGeneratorError {
 pub struct TransactionGenerator {
     accounts: AccountsFile,
     blockhash_receiver: watch::Receiver<Hash>,
-    transactions_senders: Vec<Sender<TransactionBatch>>,
+    transactions_senders: Vec<Sender<WireTransaction>>,
     transaction_params: TransactionParams,
     compute_unit_price: Option<u64>,
     priority_fee_mode: PriorityFeeMode,
@@ -53,7 +53,7 @@ impl TransactionGenerator {
     pub fn new(
         accounts: AccountsFile,
         blockhash_receiver: watch::Receiver<Hash>,
-        transactions_senders: Vec<Sender<TransactionBatch>>,
+        transactions_senders: Vec<Sender<WireTransaction>>,
         transaction_params: TransactionParams,
         compute_unit_price: Option<u64>,
         priority_fee_mode: PriorityFeeMode,
@@ -254,14 +254,16 @@ pub(crate) enum TransactionType {
     //TODO(klykov): add memo
 }
 
-async fn send_batch(wired_txs_batch: Vec<Vec<u8>>, transactions_sender: Sender<TransactionBatch>) {
+async fn send_batch(
+    wired_txs_batch: Vec<WireTransaction>,
+    transactions_sender: Sender<WireTransaction>,
+) {
     let mut measure_send_to_queue = Measure::start("add transaction batch to channel");
-    if let Err(err) = transactions_sender
-        .send(TransactionBatch::new(wired_txs_batch))
-        .await
-    {
-        error!("Receiver dropped, error {err}.");
-        return;
+    for wired_tx in wired_txs_batch {
+        if let Err(err) = transactions_sender.send(wired_tx).await {
+            error!("Receiver dropped, error {err}.");
+            return;
+        }
     }
     measure_send_to_queue.stop();
     debug!(
@@ -312,7 +314,7 @@ fn compute_batch_interval(send_batch_size: usize, target_tps: NonZeroU64) -> Dur
 
 fn create_lamports_pool(max_lamports_to_transfer: usize) -> Arc<[u64]> {
     let mut lamports: Vec<u64> = (1..=max_lamports_to_transfer as u64).collect();
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
     lamports.shuffle(&mut rng);
     lamports.into()

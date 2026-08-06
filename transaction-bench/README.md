@@ -192,7 +192,7 @@ args=(
   --accounts-file accounts.json
   --duration 30
   --num-send-instructions-per-tx 4
-  --transfer-tx-cu-budget 4000
+  --transfer-tx-cu-budget 12000
   --instruction-padding-data-size 512
   --instruction-padding-program-id "$instruction_padding_program_id"
   --use-txv1

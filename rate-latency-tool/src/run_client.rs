@@ -16,7 +16,7 @@ use {
     solana_signer::{EncodableKey, Signer},
     solana_time_utils::timestamp,
     solana_tpu_client_next::{
-        SendTransactionStats,
+        SendTransactionStats, WireTransaction,
         connection_workers_scheduler::{
             BindTarget, ConnectionWorkersSchedulerConfig, Fanout, StakeIdentity,
         },
@@ -27,7 +27,7 @@ use {
         leader_updater::create_leader_updater,
     },
     solana_transaction::{Transaction, versioned::VersionedTransaction},
-    std::{sync::Arc, time::Duration},
+    std::{num::NonZeroUsize, sync::Arc, time::Duration},
     tokio::{
         sync::{mpsc, watch},
         task::JoinSet,
@@ -182,7 +182,8 @@ pub async fn run_client(
             let config = ConnectionWorkersSchedulerConfig {
                 bind: BindTarget::Address(bind),
                 stake_identity: validator_identity.map(|ident| StakeIdentity::new(&ident)),
-                num_connections: num_max_open_connections,
+                num_connections: NonZeroUsize::new(num_max_open_connections)
+                    .expect("num-max-open-connections must be non-zero"),
                 // If worker is busy sending previous transaction, better drop the
                 // current one because timestamp will be driffted.
                 worker_channel_size: 1,
@@ -192,7 +193,6 @@ pub async fn run_client(
                     send: send_fanout,
                     connect: send_fanout.saturating_add(1),
                 },
-                skip_check_transaction_age: true,
                 override_initial_congestion_window: None,
             };
 
@@ -277,7 +277,7 @@ fn create_memo_transaction(
     compute_unit_price: Option<u64>,
     payer: &Keypair,
     blockhash: Hash,
-) -> (Signature, Vec<u8>) {
+) -> (Signature, WireTransaction) {
     let memo = format!("{tx_id},{current_slot},{timestamp}");
     let mut instructions: Vec<solana_message::Instruction> = vec![];
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(MEMO_TX_CU));
@@ -302,5 +302,5 @@ fn create_memo_transaction(
     )
     .into();
 
-    (tx.signatures[0], wincode::serialize(&tx).unwrap())
+    (tx.signatures[0], wincode::serialize(&tx).unwrap().into())
 }

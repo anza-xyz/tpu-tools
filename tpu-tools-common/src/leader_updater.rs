@@ -15,8 +15,9 @@ use {
     },
     async_trait::async_trait,
     log::{debug, error},
-    solana_clock::{NUM_CONSECUTIVE_LEADER_SLOTS, Slot},
+    solana_clock::Slot,
     solana_connection_cache::connection_cache::Protocol,
+    solana_leader_schedule::NUM_CONSECUTIVE_LEADER_SLOTS,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_tpu_client::nonblocking::tpu_client::LeaderTpuService,
     solana_tpu_client_next::{
@@ -160,7 +161,7 @@ struct LeaderUpdaterService {
 impl LeaderUpdater for LeaderUpdaterService {
     fn next_leaders(&mut self, lookahead_leaders: usize) -> Vec<SocketAddr> {
         let lookahead_slots =
-            (lookahead_leaders as u64).saturating_mul(NUM_CONSECUTIVE_LEADER_SLOTS);
+            (lookahead_leaders as u64).saturating_mul(NUM_CONSECUTIVE_LEADER_SLOTS.get() as u64);
         self.leader_tpu_service.leader_tpu_sockets(lookahead_slots)
     }
 

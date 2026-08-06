@@ -237,7 +237,7 @@ pub async fn run_csv_writer(
                     info!("Cancellation received, dumping all pending txs and stopping tx tracker csv writer.");
                     // dump those which are still pending
                     let pending_txs = pending_txs.lock().unwrap();
-                    for (_id, rec) in pending_txs.iter() {
+                    for rec in pending_txs.values() {
                         if let Err(e) = writer_sender.send(rec.as_csv_record()) {
                             error!("Send csv failed: {e}");
                         }

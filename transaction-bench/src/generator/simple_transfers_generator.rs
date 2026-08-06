@@ -8,6 +8,7 @@ use {
     solana_hash::Hash,
     solana_keypair::Keypair,
     solana_measure::measure::Measure,
+    solana_tpu_client_next::WireTransaction,
     std::{num::NonZeroUsize, ops::Range, sync::Arc},
     tokio::task::JoinHandle,
 };
@@ -29,9 +30,9 @@ pub(crate) fn generate_transfer_transaction_batch(
     priority_fee_mode: PriorityFeeMode,
     priority_fee_stats: Arc<PriorityFeeStats>,
     send_batch_size: usize,
-) -> JoinHandle<Vec<Vec<u8>>> {
+) -> JoinHandle<Vec<WireTransaction>> {
     spawn_blocking_transaction_batch_generation("generate transfer transaction batch", move || {
-        let mut txs: Vec<Vec<u8>> = Vec::with_capacity(send_batch_size);
+        let mut txs: Vec<WireTransaction> = Vec::with_capacity(send_batch_size);
         let instruction_padding_config = TransactionParams {
             simple_transfer_tx_params: simple_transfer_tx_params.clone(),
             padding_params: padding_params.clone(),
@@ -125,9 +126,9 @@ fn build_accounts_from_to_lists<'a>(
 fn spawn_blocking_transaction_batch_generation<F>(
     batch_description: &'static str,
     generation_logic: F,
-) -> JoinHandle<Vec<Vec<u8>>>
+) -> JoinHandle<Vec<WireTransaction>>
 where
-    F: FnOnce() -> Vec<Vec<u8>> + Send + 'static,
+    F: FnOnce() -> Vec<WireTransaction> + Send + 'static,
 {
     tokio::task::spawn_blocking(move || {
         let mut measure_generate = Measure::start(batch_description);

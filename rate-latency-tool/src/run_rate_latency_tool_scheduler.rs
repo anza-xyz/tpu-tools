@@ -4,9 +4,8 @@ use {
     solana_clock::Slot,
     solana_measure::measure::Measure,
     solana_tpu_client_next::{
-        ConnectionWorkersSchedulerError, SendTransactionStats,
+        ConnectionWorkersSchedulerError, SendTransactionStats, WireTransaction,
         connection_workers_scheduler::{ConnectionWorkersSchedulerConfig, setup_endpoint},
-        transaction_batch::TransactionBatch,
         workers_cache::{WorkersCache, WorkersCacheError, shutdown_worker},
     },
     solana_tpu_tools_common::leader_updater::LeaderUpdaterWithSlot,
@@ -23,7 +22,6 @@ pub async fn run_rate_latency_tool_scheduler<F, S>(
         bind,
         stake_identity,
         num_connections,
-        skip_check_transaction_age,
         worker_channel_size,
         max_reconnect_attempts,
         leaders_fanout,
@@ -35,7 +33,7 @@ pub async fn run_rate_latency_tool_scheduler<F, S>(
     mut send_record: S,
 ) -> Result<Arc<SendTransactionStats>, ConnectionWorkersSchedulerError>
 where
-    F: FnMut(Slot) -> (usize, Vec<u8>, CSVRecord),
+    F: FnMut(Slot) -> (usize, WireTransaction, CSVRecord),
     S: FnMut(CSVRecord),
 {
     assert!(
@@ -68,7 +66,6 @@ where
                     peer,
                     &endpoint,
                     worker_channel_size,
-                    skip_check_transaction_age,
                     max_reconnect_attempts,
                     handshake_timeout,
                     stats.clone(),
@@ -81,8 +78,7 @@ where
             // assumtion here is that the ticker interval >> this value  and
             // hence we can neglect generating/sending time for ticking.
             let mut measure_generate_send = Measure::start("generate_send");
-            let (transaction_id, memo_tx, mut record) = build_tx(current_slot);
-            let transaction_batch = TransactionBatch::new(vec![memo_tx]);
+            let (transaction_id, transaction, mut record) = build_tx(current_slot);
             for new_leader in &send_leaders {
                 if !workers.contains(new_leader) {
                     warn!(
@@ -93,7 +89,7 @@ where
                 }
 
                 let send_res =
-                    workers.try_send_transactions_to_address(new_leader, transaction_batch.clone());
+                    workers.try_send_transaction_to_address(new_leader, transaction.clone());
                 let status = match send_res {
                     Ok(()) => {
                         debug!(

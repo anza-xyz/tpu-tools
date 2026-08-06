@@ -58,24 +58,24 @@ jobs:
         shell: bash
         run: |
           rustup show active-toolchain || rustup toolchain install
-          rustup toolchain install nightly-2026-02-28 --profile minimal --component rustfmt --component clippy
-          cargo +nightly-2026-02-28 install cargo-sort --locked
+          rustup toolchain install nightly-2026-05-23 --profile minimal --component rustfmt --component clippy
+          cargo +nightly-2026-05-23 install cargo-sort --locked
 
       - name: Format
         shell: bash
-        run: cargo +nightly-2026-02-28 fmt --all --check
+        run: cargo +nightly-2026-05-23 fmt --all --check
 
       - name: Sort
         shell: bash
-        run: cargo +nightly-2026-02-28 sort --workspace --check
+        run: cargo +nightly-2026-05-23 sort --workspace --check
 
       - name: Check
         shell: bash
-        run: cargo +nightly-2026-02-28 check --locked --workspace --all-targets
+        run: cargo +nightly-2026-05-23 check --locked --workspace --all-targets
 
       - name: Clippy
         shell: bash
-        run: cargo +nightly-2026-02-28 clippy --workspace --all-targets -- --deny=warnings --deny=clippy::default_trait_access --deny=clippy::arithmetic_side_effects --deny=clippy::manual_let_else --deny=clippy::uninlined-format-args --deny=clippy::used_underscore_binding
+        run: cargo +nightly-2026-05-23 clippy --workspace --all-targets -- --deny=warnings --deny=clippy::default_trait_access --deny=clippy::arithmetic_side_effects --deny=clippy::manual_let_else --deny=clippy::uninlined-format-args --deny=clippy::used_underscore_binding
 
       - name: Test
         shell: bash

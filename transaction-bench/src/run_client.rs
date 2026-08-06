@@ -17,18 +17,22 @@ use {
     solana_signer::{EncodableKey, Signer},
     solana_streamer::nonblocking::quic::ConnectionPeerType,
     solana_tpu_client_next::{
-        ConnectionWorkersScheduler, SendTransactionStats,
+        ConnectionWorkersScheduler, SendTransactionStats, WireTransaction,
         connection_workers_scheduler::{
             BindTarget, ConnectionWorkersSchedulerConfig, Fanout, StakeIdentity,
         },
         node_address_service::LeaderTpuCacheServiceConfig,
-        transaction_batch::TransactionBatch,
     },
     solana_tpu_tools_common::{
         accounts_file::AccountsFile, blockhash_updater::BlockhashUpdater,
         leader_updater::create_leader_updater,
     },
-    std::{fmt::Debug, num::NonZeroU64, sync::Arc, time::Duration},
+    std::{
+        fmt::Debug,
+        num::{NonZeroU64, NonZeroUsize},
+        sync::Arc,
+        time::Duration,
+    },
     tokio::{
         sync::{mpsc, oneshot, watch},
         task::JoinHandle,
@@ -362,7 +366,7 @@ async fn build_schedulers(
     execution_params: &ExecutionParams,
     endpoint_configs: Vec<EndpointConfig>,
     endpoint_identities: Vec<Option<Keypair>>,
-    transaction_receivers: Vec<mpsc::Receiver<TransactionBatch>>,
+    transaction_receivers: Vec<mpsc::Receiver<WireTransaction>>,
     leader_updater_config: LeaderTpuCacheServiceConfig,
     cancel: CancellationToken,
 ) -> Result<
@@ -393,14 +397,14 @@ async fn build_schedulers(
         let scheduler_config = ConnectionWorkersSchedulerConfig {
             bind: BindTarget::Address(endpoint_config.bind),
             stake_identity,
-            num_connections: execution_params.num_max_open_connections,
+            num_connections: NonZeroUsize::new(execution_params.num_max_open_connections)
+                .expect("num-max-open-connections must be non-zero"),
             worker_channel_size: WORKER_CHANNEL_SIZE,
             max_reconnect_attempts: MAX_RECONNECT_ATTEMPTS,
             leaders_fanout: Fanout {
                 send: execution_params.send_fanout,
                 connect: execution_params.send_fanout.saturating_add(1),
             },
-            skip_check_transaction_age: false,
             override_initial_congestion_window: execution_params
                 .initial_congestion_window
                 .map(NonZeroU64::get),
