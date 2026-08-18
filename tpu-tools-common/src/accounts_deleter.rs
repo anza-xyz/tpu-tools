@@ -274,8 +274,8 @@ mod tests {
         assert_eq!(txs.len(), 1);
 
         const SOLANA_TXN_MAX_BYTES: usize = 1232;
-        let txn_size = bincode::serialized_size(&txs[0].0)
-            .expect("transaction should be bincode-serializable") as usize;
+        let txn_size = wincode::serialized_size(&txs[0].0)
+            .expect("transaction should be wincode-serializable") as usize;
         assert!(
             txn_size <= SOLANA_TXN_MAX_BYTES,
             "serialized transaction size {txn_size} exceeds Solana limit {SOLANA_TXN_MAX_BYTES}"

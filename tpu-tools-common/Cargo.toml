@@ -54,10 +54,9 @@ yellowstone-grpc-client = { workspace = true }
 yellowstone-grpc-proto = { workspace = true }
 
 [dev-dependencies]
-# Using bincode since serializing txns isn't compatible with wincode
-bincode = { workspace = true }
 rand = { workspace = true }
 solana-sha256-hasher = { workspace = true }
+wincode = { workspace = true }
 
 [lints]
 workspace = true

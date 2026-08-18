@@ -498,13 +498,13 @@ mod tests {
             "expected at least one transaction in the generated batch"
         );
 
-        // Legacy packets are capped at 1232 bytes; `Transaction` uses solana-transaction 3.x with
-        // bincode/serde — `serialized_size` bounds the wire size for these `VersionedTransaction` values.
+        // Legacy packets are capped at 1232 bytes; `serialized_size` bounds the wire size for
+        // these `VersionedTransaction` values.
         const SOLANA_TXN_MAX_BYTES: usize = 1232;
 
         for (i, (tx, _new_accounts)) in txn.iter().enumerate() {
-            let txn_size = bincode::serialized_size(tx)
-                .expect("transaction should be bincode-serializable")
+            let txn_size = wincode::serialized_size(tx)
+                .expect("transaction should be wincode-serializable")
                 as usize;
             assert!(
                 txn_size <= SOLANA_TXN_MAX_BYTES,
