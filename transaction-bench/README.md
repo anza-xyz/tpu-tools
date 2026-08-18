@@ -118,10 +118,9 @@ solana-transaction-bench "${args[@]}"
 #### Target TPS
 
 Use `--target-tps` to pace transaction generation instead of sending as fast as
-the generator and connection workers allow. When `--target-tps` is set and
-`--tx-batch-size` is not set, the tool chooses a batch size for roughly 10
-batches per second and adjusts the generator worker count for the requested
-rate.
+the generator and connection workers allow. Transaction batches are a generator
+concern only; `--tx-batch-size` controls how many transactions are produced per
+generated batch and defaults to 64.
 
 ```shell
 args=(
@@ -216,8 +215,9 @@ solana -u "$URL" program deploy spl_instruction_padding.so --program-id spl_inst
 
 #### Transaction Conflicts
 
-Use `--tx-batch-size` with `--num-conflict-groups` to intentionally reuse destination accounts
-within each generated batch. Lower conflict group counts create more account conflicts.
+Use `--num-conflict-groups` to intentionally reuse destination accounts within each generated
+batch. Lower conflict group counts create more account conflicts. Use `--tx-batch-size` to change
+the generated batch size from its default of 64.
 `--num-conflict-groups` must be no greater than `--num-send-instructions-per-tx * --tx-batch-size`.
 
 ```shell

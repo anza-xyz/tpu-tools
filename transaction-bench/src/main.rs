@@ -311,7 +311,10 @@ mod tests {
             ExecutionParams, InstructionPaddingParams, PriorityFeeParams, SimpleTransferTxParams,
             TransactionParams,
         },
-        std::net::{IpAddr, Ipv4Addr, SocketAddr},
+        std::{
+            net::{IpAddr, Ipv4Addr, SocketAddr},
+            num::NonZeroUsize,
+        },
     };
 
     fn test_run_parameters(leader_tracker: LeaderTracker) -> ClientCliParameters {
@@ -336,7 +339,7 @@ mod tests {
                     initial_congestion_window: None,
                     drain_seconds: 0,
                     num_max_open_connections: 1,
-                    workers_pull_size: 1,
+                    workers_pull_size: NonZeroUsize::new(1).unwrap(),
                     send_fanout: 1,
                     compute_unit_price: None,
                     priority_fee_params: PriorityFeeParams {
@@ -350,7 +353,7 @@ mod tests {
                         max_lamports_to_transfer: 513,
                         transfer_tx_cu_budget: 600,
                         num_send_instructions_per_tx: 1,
-                        tx_batch_size: None,
+                        tx_batch_size: NonZeroUsize::new(64).unwrap(),
                         num_conflict_groups: None,
                     },
                     padding_params: InstructionPaddingParams {

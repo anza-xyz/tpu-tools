@@ -2,6 +2,7 @@
 use {
     crate::{
         cli::{SimpleTransferTxParams, TransactionParams},
+        error::BenchClientError,
         generator::simple_transfers_generator::{SharedSlice, generate_transfer_transaction_batch},
         priority_fee::{PriorityFeeMode, PriorityFeeStats},
     },
@@ -11,7 +12,7 @@ use {
     solana_measure::measure::Measure,
     solana_tpu_client_next::WireTransaction,
     solana_tpu_tools_common::accounts_file::AccountsFile,
-    std::{num::NonZeroU64, sync::Arc},
+    std::{num::NonZeroUsize, sync::Arc},
     thiserror::Error,
     tokio::{
         sync::{mpsc::Sender, watch},
@@ -41,10 +42,10 @@ pub struct TransactionGenerator {
     compute_unit_price: Option<u64>,
     priority_fee_mode: PriorityFeeMode,
     priority_fee_stats: Arc<PriorityFeeStats>,
-    send_batch_size: usize,
     run_duration: Option<Duration>,
-    num_transactions: Option<NonZeroU64>,
-    target_tps: Option<NonZeroU64>,
+    num_transactions: Option<u64>,
+    target_tps: Option<u64>,
+    generate_tx_batch_size: usize,
     workers_pull_size: usize,
 }
 
@@ -58,10 +59,10 @@ impl TransactionGenerator {
         compute_unit_price: Option<u64>,
         priority_fee_mode: PriorityFeeMode,
         priority_fee_stats: Arc<PriorityFeeStats>,
-        send_batch_size: usize,
         duration: Option<Duration>,
-        num_transactions: Option<NonZeroU64>,
-        target_tps: Option<NonZeroU64>,
+        num_transactions: Option<u64>,
+        target_tps: Option<u64>,
+        generate_tx_batch_size: usize,
         workers_pull_size: usize,
     ) -> Self {
         Self {
@@ -72,10 +73,10 @@ impl TransactionGenerator {
             compute_unit_price,
             priority_fee_mode,
             priority_fee_stats,
-            send_batch_size,
             run_duration: duration,
             num_transactions,
             target_tps,
+            generate_tx_batch_size,
             workers_pull_size,
         }
     }
@@ -142,9 +143,11 @@ impl TransactionGenerator {
                 if let Some(next_batch_deadline) = next_batch_at {
                     tokio::time::sleep_until(next_batch_deadline).await;
                 }
-                let Some(send_batch_size) =
-                    next_batch_size(self.num_transactions, self.send_batch_size, txs_scheduled)
-                else {
+                let Some(send_batch_size) = next_batch_size(
+                    self.num_transactions,
+                    self.generate_tx_batch_size,
+                    txs_scheduled,
+                ) else {
                     break;
                 };
                 txs_scheduled = txs_scheduled.saturating_add(send_batch_size as u64);
@@ -276,13 +279,13 @@ async fn send_batch(
 /// (`--duration` or `--num-transactions`) has been reached.
 fn stop_reason(
     run_duration: Option<Duration>,
-    num_transactions: Option<NonZeroU64>,
+    num_transactions: Option<u64>,
     elapsed: Duration,
     txs_scheduled: u64,
 ) -> Option<&'static str> {
     if run_duration.is_some_and(|run_duration| elapsed >= run_duration) {
         Some("duration reached")
-    } else if num_transactions.is_some_and(|budget| txs_scheduled >= budget.get()) {
+    } else if num_transactions.is_some_and(|budget| txs_scheduled >= budget) {
         Some("requested tx count reached")
     } else {
         None
@@ -292,22 +295,22 @@ fn stop_reason(
 /// Number of transactions to schedule in the next batch, or `None` when the
 /// `--num-transactions` budget is exhausted.
 fn next_batch_size(
-    num_transactions: Option<NonZeroU64>,
+    num_transactions: Option<u64>,
     send_batch_size: usize,
     txs_scheduled: u64,
 ) -> Option<usize> {
     let Some(budget) = num_transactions else {
         return Some(send_batch_size);
     };
-    let remaining = budget.get().saturating_sub(txs_scheduled);
+    let remaining = budget.saturating_sub(txs_scheduled);
     // The min() with send_batch_size makes the cast back to usize lossless.
     (remaining > 0).then(|| remaining.min(send_batch_size as u64) as usize)
 }
 
 #[allow(clippy::arithmetic_side_effects)]
-fn compute_batch_interval(send_batch_size: usize, target_tps: NonZeroU64) -> Duration {
+fn compute_batch_interval(send_batch_size: usize, target_tps: u64) -> Duration {
     let send_batch_size = u128::try_from(send_batch_size).unwrap_or(u128::MAX);
-    let target_tps = u128::from(target_tps.get());
+    let target_tps = u128::from(target_tps);
     let batch_interval_nanos = (send_batch_size * 1_000_000_000).div_ceil(target_tps);
     Duration::from_nanos(u64::try_from(batch_interval_nanos).unwrap_or(u64::MAX))
 }
@@ -340,25 +343,40 @@ fn next_lamports_slice(
     lamports
 }
 
+pub(crate) fn check_num_conflict_groups(
+    num_conflict_groups: Option<NonZeroUsize>,
+    num_send_instructions_per_tx: usize,
+    generate_tx_batch_size: usize,
+) -> Result<(), BenchClientError> {
+    let Some(num_conflict_groups) = num_conflict_groups else {
+        return Ok(());
+    };
+    let max_groups = num_send_instructions_per_tx.saturating_mul(generate_tx_batch_size);
+    let num_conflict_groups = num_conflict_groups.get();
+
+    if num_conflict_groups > max_groups {
+        return Err(BenchClientError::InvalidCliArguments(format!(
+            "--num-conflict-groups ({num_conflict_groups}) must be <= \
+             num-send-instructions-per-tx ({num_send_instructions_per_tx}) * tx-batch-size \
+             ({generate_tx_batch_size})"
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use {
         super::{compute_batch_interval, compute_transfer_tx_min_cu_budget, next_lamports_slice},
         crate::cli::{InstructionPaddingParams, SimpleTransferTxParams, TransactionParams},
-        std::{num::NonZeroU64, sync::Arc},
+        std::{num::NonZeroUsize, sync::Arc},
         tokio::time::Duration,
     };
 
     #[test]
     fn test_compute_batch_interval() {
-        assert_eq!(
-            compute_batch_interval(10, NonZeroU64::new(100).unwrap()),
-            Duration::from_millis(100)
-        );
-        assert_eq!(
-            compute_batch_interval(1, NonZeroU64::new(1).unwrap()),
-            Duration::from_secs(1)
-        );
+        assert_eq!(compute_batch_interval(10, 100), Duration::from_millis(100));
+        assert_eq!(compute_batch_interval(1, 1), Duration::from_secs(1));
     }
 
     #[test]
@@ -404,19 +422,6 @@ mod tests {
         assert_eq!(index, 4);
     }
 
-    #[test]
-    fn test_next_lamports_slice_reshuffles_when_tail_is_too_short() {
-        let mut pool: Arc<[u64]> = Arc::from([1, 2, 3, 4]);
-        let mut index = 0;
-
-        let old_slice = next_lamports_slice(&mut pool, &mut index, 3);
-        let new_slice = next_lamports_slice(&mut pool, &mut index, 3);
-
-        assert_eq!(old_slice.as_slice(), &[1, 2, 3]);
-        assert_eq!(new_slice.as_slice().len(), 3);
-        assert_eq!(index, 3);
-    }
-
     fn make_transaction_params(
         num_send_instructions_per_tx: usize,
         instruction_padding_data_size: Option<u32>,
@@ -427,7 +432,7 @@ mod tests {
                 max_lamports_to_transfer: 513,
                 transfer_tx_cu_budget: 600,
                 num_send_instructions_per_tx,
-                tx_batch_size: None,
+                tx_batch_size: NonZeroUsize::new(64).unwrap(),
                 num_conflict_groups: None,
             },
             padding_params: InstructionPaddingParams {

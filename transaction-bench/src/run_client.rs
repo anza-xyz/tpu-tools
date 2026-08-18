@@ -3,19 +3,13 @@ use {
         backpressured_broadcaster::BackpressuredBroadcaster,
         cli::{EndpointConfig, ExecutionParams, TransactionParams},
         error::BenchClientError,
-        generator::TransactionGenerator,
+        generator::{TransactionGenerator, transaction_generator::check_num_conflict_groups},
         priority_fee::{PriorityFeeMode, PriorityFeeStats},
     },
     log::*,
     solana_keypair::Keypair,
-    solana_pubkey::Pubkey,
-    solana_quic_definitions::{
-        QUIC_MAX_STAKED_CONCURRENT_STREAMS, QUIC_MAX_UNSTAKED_CONCURRENT_STREAMS,
-        QUIC_MIN_STAKED_CONCURRENT_STREAMS, QUIC_TOTAL_STAKED_CONCURRENT_STREAMS,
-    },
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
-    solana_signer::{EncodableKey, Signer},
-    solana_streamer::nonblocking::quic::ConnectionPeerType,
+    solana_signer::EncodableKey,
     solana_tpu_client_next::{
         ConnectionWorkersScheduler, SendTransactionStats, WireTransaction,
         connection_workers_scheduler::{
@@ -49,61 +43,12 @@ const WORKER_CHANNEL_SIZE: usize = 20;
 /// doesn't affect TPS.
 const MAX_RECONNECT_ATTEMPTS: usize = 5;
 
-/// Default number of streams per connection if stake-based computation fails.
-/// This failure happens if we use stake overrides.
-const DEFAULT_NUM_STREAMS_PER_CONNECTION: usize = 8;
-const TARGET_BATCHES_PER_SECOND: u64 = 10;
-
 pub struct RunClientStats {
     pub send_transaction_stats: Vec<Arc<SendTransactionStats>>,
     pub priority_fee_stats: Arc<PriorityFeeStats>,
 }
 
 pub type RunClientStatsSender = oneshot::Sender<RunClientStats>;
-
-async fn find_node_activated_stake(
-    rpc_client: &Arc<RpcClient>,
-    node_id: Option<Pubkey>,
-) -> Result<(Option<u64>, u64), BenchClientError> {
-    let vote_accounts = rpc_client
-        .get_vote_accounts()
-        .await
-        .map_err(|_| BenchClientError::FindValidatorIdentityFailure)?;
-
-    let total_active_stake: u64 = vote_accounts
-        .current
-        .iter()
-        .map(|vote_account| vote_account.activated_stake)
-        .sum();
-
-    let Some(node_id) = node_id else {
-        return Ok((None, total_active_stake));
-    };
-    let node_id_as_str = node_id.to_string();
-    let find_result = vote_accounts
-        .current
-        .iter()
-        .find(|&vote_account| vote_account.node_pubkey == node_id_as_str);
-    match find_result {
-        Some(value) => Ok((Some(value.activated_stake), total_active_stake)),
-        None => Err(BenchClientError::FindValidatorIdentityFailure),
-    }
-}
-
-async fn compute_num_streams(
-    rpc_client: &Arc<RpcClient>,
-    validator_pubkey: Option<Pubkey>,
-) -> Result<usize, BenchClientError> {
-    let (validator_stake, total_stake) =
-        find_node_activated_stake(rpc_client, validator_pubkey).await?;
-    debug!(
-        "Validator {validator_pubkey:?} stake: {validator_stake:?}, total stake: {total_stake}."
-    );
-    let client_type = validator_stake.map_or(ConnectionPeerType::Unstaked, |stake| {
-        ConnectionPeerType::Staked(stake)
-    });
-    Ok(compute_max_allowed_uni_streams(client_type, total_stake))
-}
 
 async fn join_service<Error>(
     handle: JoinHandle<Result<(), Error>>,
@@ -148,95 +93,52 @@ pub async fn run_client(
         .map(load_identity)
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Set up size of the txs batch to put into the queue to be equal to the minimum
-    // stream count across configured endpoints.
-    let mut num_streams_per_connection = usize::MAX;
-    for (endpoint_config, validator_identity) in
-        endpoint_configs.iter().zip(endpoint_identities.iter())
-    {
-        let endpoint_num_streams = compute_num_streams(
-            &rpc_client,
-            validator_identity.as_ref().map(|keypair| keypair.pubkey()),
-        )
-        .await
-        .unwrap_or(DEFAULT_NUM_STREAMS_PER_CONNECTION);
-        info!(
-            "Endpoint {} will use {endpoint_num_streams} streams per connection.",
-            endpoint_config.bind
-        );
-        num_streams_per_connection = num_streams_per_connection.min(endpoint_num_streams);
-    }
-    if num_streams_per_connection == usize::MAX {
-        num_streams_per_connection = DEFAULT_NUM_STREAMS_PER_CONNECTION;
-    }
-
-    let tx_batch_size = transaction_params
+    let generate_tx_batch_size = transaction_params
         .simple_transfer_tx_params
         .tx_batch_size
-        .map(|n| n.get());
-    let send_batch_size = compute_send_batch_size(
-        tx_batch_size,
-        num_streams_per_connection,
-        execution_params.target_tps,
-    );
-    let workers_pull_size = compute_workers_pull_size(
-        execution_params.workers_pull_size,
-        send_batch_size,
-        execution_params.target_tps,
-    );
-    info!("Number of streams per connection is {num_streams_per_connection}.");
-    if let Some(tx_batch_size) = tx_batch_size {
-        info!("Using tx batch size override: {tx_batch_size}.");
-    } else if let Some(target_tps) = execution_params.target_tps {
-        info!("Using rate-limited tx batch size {send_batch_size} for target {target_tps} tx/s.");
-    }
-    if let Some(target_tps) = execution_params.target_tps {
+        .get();
+    let workers_pull_size = execution_params.workers_pull_size.get();
+    let num_transactions = execution_params.num_transactions.map(NonZeroU64::get);
+    let target_tps = execution_params.target_tps.map(NonZeroU64::get);
+    if let Some(target_tps) = target_tps {
         info!("Using {workers_pull_size} generator workers for target {target_tps} tx/s.");
     }
 
     {
-        let transfer_instructions_per_batch = transaction_params
+        let transfer_instructions_per_tx = transaction_params
             .simple_transfer_tx_params
-            .num_send_instructions_per_tx
-            .saturating_mul(send_batch_size);
-        if transfer_instructions_per_batch
-            > transaction_params
+            .num_send_instructions_per_tx;
+        let transfer_instructions_per_batch =
+            transfer_instructions_per_tx.saturating_mul(generate_tx_batch_size);
+        let max_lamports_to_transfer = usize::try_from(
+            transaction_params
                 .simple_transfer_tx_params
-                .max_lamports_to_transfer as usize
-        {
+                .max_lamports_to_transfer,
+        )
+        .unwrap_or(usize::MAX);
+        if transfer_instructions_per_batch > max_lamports_to_transfer {
             return Err(BenchClientError::InvalidCliArguments(format!(
                 "--max-lamports-to-transfer ({}) must be >= transfer instructions per generated \
-                 batch ({}) ; computed as num-send-instructions-per-tx ({}) * tx-batch-size ({})",
+                 batch ({}) computed as num-send-instructions-per-tx ({}) * tx-batch-size ({})",
                 transaction_params
                     .simple_transfer_tx_params
                     .max_lamports_to_transfer,
                 transfer_instructions_per_batch,
-                transaction_params
-                    .simple_transfer_tx_params
-                    .num_send_instructions_per_tx,
-                send_batch_size
+                transfer_instructions_per_tx,
+                generate_tx_batch_size
             )));
         }
     }
 
-    if let Some(num_conflict_groups) = transaction_params
-        .simple_transfer_tx_params
-        .num_conflict_groups
-    {
-        let num_send_instructions_per_tx = transaction_params
+    check_num_conflict_groups(
+        transaction_params
             .simple_transfer_tx_params
-            .num_send_instructions_per_tx;
-        let max_groups = num_send_instructions_per_tx.saturating_mul(send_batch_size);
-        let num_conflict_groups = num_conflict_groups.get();
-
-        if num_conflict_groups > max_groups {
-            return Err(BenchClientError::InvalidCliArguments(format!(
-                "--num-conflict-groups ({num_conflict_groups}) must be <= \
-                 num-send-instructions-per-tx ({num_send_instructions_per_tx}) * tx-batch-size \
-                 ({send_batch_size})"
-            )));
-        }
-    }
+            .num_conflict_groups,
+        transaction_params
+            .simple_transfer_tx_params
+            .num_send_instructions_per_tx,
+        generate_tx_batch_size,
+    )?;
 
     if let Some(instruction_padding_config) = transaction_params.instruction_padding_config() {
         info!(
@@ -289,10 +191,10 @@ pub async fn run_client(
         execution_params.compute_unit_price,
         priority_fee_mode,
         priority_fee_stats.clone(),
-        send_batch_size,
         execution_params.duration,
-        execution_params.num_transactions,
-        execution_params.target_tps,
+        num_transactions,
+        target_tps,
+        generate_tx_batch_size,
         workers_pull_size,
     );
 
@@ -430,69 +332,4 @@ async fn build_schedulers(
     }
 
     Ok((scheduler_handles, all_stats))
-}
-
-#[allow(clippy::arithmetic_side_effects)]
-fn compute_send_batch_size(
-    tx_batch_size_override: Option<usize>,
-    num_streams_per_connection: usize,
-    target_tps: Option<NonZeroU64>,
-) -> usize {
-    tx_batch_size_override.unwrap_or_else(|| {
-        target_tps.map_or(num_streams_per_connection, |target_tps| {
-            let target_tps = target_tps.get();
-            let target_batch_size = target_tps.div_ceil(TARGET_BATCHES_PER_SECOND);
-            usize::try_from(target_batch_size)
-                .unwrap_or(usize::MAX)
-                .clamp(1, num_streams_per_connection)
-        })
-    })
-}
-
-#[allow(clippy::arithmetic_side_effects)]
-fn compute_workers_pull_size(
-    configured_workers_pull_size: usize,
-    send_batch_size: usize,
-    target_tps: Option<NonZeroU64>,
-) -> usize {
-    target_tps.map_or(configured_workers_pull_size, |target_tps| {
-        let target_batches_per_sec = target_tps
-            .get()
-            .div_ceil(u64::try_from(send_batch_size).unwrap_or(u64::MAX));
-        let guessed_workers = match target_batches_per_sec {
-            0..=1 => 1,
-            2..=10 => 2,
-            _ => 4,
-        };
-        guessed_workers.min(configured_workers_pull_size.max(1))
-    })
-}
-
-// Private function copied from streamer::nonblocking::swqos
-#[allow(clippy::arithmetic_side_effects)]
-fn compute_max_allowed_uni_streams(peer_type: ConnectionPeerType, total_stake: u64) -> usize {
-    match peer_type {
-        ConnectionPeerType::Staked(peer_stake) => {
-            // No checked math for f64 type. So let's explicitly check for 0 here
-            if total_stake == 0 || peer_stake > total_stake {
-                warn!(
-                    "Invalid stake values: peer_stake: {peer_stake:?}, total_stake: \
-                     {total_stake:?}"
-                );
-
-                QUIC_MIN_STAKED_CONCURRENT_STREAMS
-            } else {
-                let delta = (QUIC_TOTAL_STAKED_CONCURRENT_STREAMS
-                    - QUIC_MIN_STAKED_CONCURRENT_STREAMS) as f64;
-
-                (((peer_stake as f64 / total_stake as f64) * delta) as usize
-                    + QUIC_MIN_STAKED_CONCURRENT_STREAMS)
-                    .clamp(
-                        QUIC_MIN_STAKED_CONCURRENT_STREAMS,
-                        QUIC_MAX_STAKED_CONCURRENT_STREAMS,
-                    )
-            }
-        }
-        ConnectionPeerType::Unstaked => QUIC_MAX_UNSTAKED_CONCURRENT_STREAMS,
-    }
 }

@@ -8312,15 +8312,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "solana-quic-definitions"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15319accf7d3afd845817aeffa6edd8cc185f135cefbc6b985df29cfd8c09609"
-dependencies = [
- "solana-keypair",
-]
-
-[[package]]
 name = "solana-rate-latency-tool"
 version = "0.1.0"
 dependencies = [
@@ -8353,7 +8344,6 @@ dependencies = [
  "solana-net-utils",
  "solana-pubkey 4.3.0",
  "solana-pubsub-client",
- "solana-quic-definitions",
  "solana-rent",
  "solana-rpc",
  "solana-rpc-client",
@@ -9700,7 +9690,6 @@ dependencies = [
  "solana-net-utils",
  "solana-pubkey 4.3.0",
  "solana-pubsub-client",
- "solana-quic-definitions",
  "solana-rent",
  "solana-rpc",
  "solana-rpc-client",

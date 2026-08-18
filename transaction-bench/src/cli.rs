@@ -215,11 +215,12 @@ pub struct ExecutionParams {
 
     #[clap(
         long,
-        default_value_t = 8,
+        default_value = "8",
+        value_parser = value_parser!(NonZeroUsize),
         help = "Size of the workers pull, controls how many transactions batches are generated in \
                 parallel."
     )]
-    pub workers_pull_size: usize,
+    pub workers_pull_size: NonZeroUsize,
 
     #[clap(
         long,
@@ -371,18 +372,22 @@ pub struct SimpleTransferTxParams {
 
     #[clap(
         long,
+        default_value = "64",
         value_parser = value_parser!(NonZeroUsize),
-        help = "Number of transactions per batch. Required when using --num-conflict-groups."
+        help = "Number of transactions per generated batch. This also affects the maximum valid \
+        --num-conflict-groups value: num-send-instructions-per-tx * tx-batch-size."
     )]
-    pub tx_batch_size: Option<NonZeroUsize>,
+    pub tx_batch_size: NonZeroUsize,
 
     #[clap(
         long,
-        requires = "tx_batch_size",
         value_parser = value_parser!(NonZeroUsize),
         help = "Number of unique destination accounts per batch.\n\
                 When set, destinations repeat to create account conflicts.\n\
-                Lower value = more conflicts. Default: all destinations unique."
+                Lower value = more conflicts. Default: all destinations unique.\n\
+                Destinations are reused cyclically across all transfer instructions\n\
+                in the batch, so lower values create more account conflicts.\n\
+                Must be <= num-send-instructions-per-tx * tx-batch-size."
     )]
     pub num_conflict_groups: Option<NonZeroUsize>,
 }
@@ -498,7 +503,7 @@ mod tests {
                     address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8009),
                 },
                 num_max_open_connections: 16,
-                workers_pull_size: 8,
+                workers_pull_size: NonZeroUsize::new(8).unwrap(),
                 send_fanout: 2,
                 compute_unit_price: Some(1000),
                 priority_fee_params: PriorityFeeParams {
@@ -538,7 +543,7 @@ mod tests {
                         max_lamports_to_transfer: 1000,
                         transfer_tx_cu_budget: 600,
                         num_send_instructions_per_tx: 1,
-                        tx_batch_size: None,
+                        tx_batch_size: NonZeroUsize::new(64).unwrap(),
                         num_conflict_groups: None,
                     },
                     padding_params: InstructionPaddingParams {
@@ -593,7 +598,7 @@ mod tests {
                         max_lamports_to_transfer: DEFAULT_MAX_LAMPORTS_TO_TRANSFER,
                         transfer_tx_cu_budget: 1000,
                         num_send_instructions_per_tx: 2,
-                        tx_batch_size: None,
+                        tx_batch_size: NonZeroUsize::new(64).unwrap(),
                         num_conflict_groups: None,
                     },
                     padding_params: InstructionPaddingParams {
@@ -622,7 +627,7 @@ mod tests {
                 max_lamports_to_transfer: DEFAULT_MAX_LAMPORTS_TO_TRANSFER,
                 transfer_tx_cu_budget: 600,
                 num_send_instructions_per_tx: 1,
-                tx_batch_size: None,
+                tx_batch_size: NonZeroUsize::new(64).unwrap(),
                 num_conflict_groups: None,
             },
             padding_params: InstructionPaddingParams {
@@ -907,7 +912,7 @@ mod tests {
     }
 
     #[test]
-    fn test_conflict_groups_requires_tx_batch_size() {
+    fn test_conflict_groups_accepts_default_tx_batch_size() {
         let keypair_file_name = "/home/testUser/masterKey.json";
         let (account_args, _account_params) = get_common_account_params();
         let (exec_args, _execution_params) = get_common_execution_params(keypair_file_name);
@@ -921,11 +926,11 @@ mod tests {
         args.extend(exec_args.iter());
         assert!(ClientCliParameters::try_parse_from(args).is_ok());
 
-        // err: num-conflict-groups without tx-batch-size
+        // ok: num-conflict-groups uses the default generated batch size.
         let mut args = base_args.clone();
         args.extend(["--num-conflict-groups", "4"]);
         args.extend(exec_args.iter());
-        assert!(ClientCliParameters::try_parse_from(args).is_err());
+        assert!(ClientCliParameters::try_parse_from(args).is_ok());
 
         // err: num-conflict-groups = 0
         let mut args = base_args.clone();
