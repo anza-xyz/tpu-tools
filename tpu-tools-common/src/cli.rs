@@ -29,12 +29,6 @@ pub enum LeaderTracker {
     )]
     PinnedLeaderTracker { address: SocketAddr },
 
-    /// Use the legacy Solana websocket TPU leader service.
-    #[clap(
-        about = "Use old ws tracking code for slot updates. WS url is generated from the RPC url."
-    )]
-    LegacyLeaderTracker,
-
     /// Use the `solana-tpu-client-next` websocket node-address service.
     #[clap(about = "Use ws for slot updates. WS url is generated from the RPC url.")]
     WsLeaderTracker,

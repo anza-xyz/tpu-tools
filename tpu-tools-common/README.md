@@ -18,9 +18,8 @@ needs the same account setup or leader-tracking behavior.
   files, URLs, durations, balances, and leader tracker selection.
 - `blockhash_updater`: an async task that polls RPC for fresh blockhashes and
   publishes them through a `tokio::sync::watch` channel.
-- `leader_updater`: a factory and traits for pinned, legacy websocket,
-  websocket node-address-service, Yellowstone, and custom UDP/Geyser leader
-  tracking.
+- `leader_updater`: a factory and traits for pinned, websocket
+  node-address-service, Yellowstone, and custom UDP/Geyser leader tracking.
 - `yellowstone_leader_tracker`: a Yellowstone gRPC slot-event adapter for
   `solana-tpu-client-next` leader tracking.
 

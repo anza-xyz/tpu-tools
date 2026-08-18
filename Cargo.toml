@@ -47,7 +47,6 @@ solana-clock = "3.2"
 solana-commitment-config = "=3.1.1"
 solana-compute-budget-interface = "=3.1.0"
 solana-config-interface = "=2.0.0"
-solana-connection-cache = { version = "=4.3.0-beta.0", default-features = false, features = ["agave-unstable-api"] }
 solana-epoch-info = "=3.1.0"
 solana-epoch-schedule = "=3.3.0"
 solana-faucet = { version = "=4.3.0-beta.0", features = ["agave-unstable-api"] }
@@ -76,7 +75,6 @@ solana-streamer = { version = "=4.3.0-beta.0", features = ["agave-unstable-api"]
 solana-system-interface = { version = "3.3.0", features = ["alloc", "bincode", "serde", "wincode"] }
 solana-test-validator = { version = "=4.3.0-beta.0", features = ["agave-unstable-api"] }
 solana-time-utils = "=3.0.0"
-solana-tpu-client = { version = "=4.3.0-beta.0", default-features = false, features = ["agave-unstable-api"] }
 solana-tpu-client-next = { version = "=4.3.0-beta.0", features = ["agave-unstable-api"] }
 solana-tpu-tools-common = { path = "tpu-tools-common", version = "0.1.0" }
 solana-transaction = "4.2.0"

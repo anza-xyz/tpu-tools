@@ -46,7 +46,6 @@ solana-signature = { workspace = true }
 solana-signer = { workspace = true }
 solana-system-interface = { workspace = true }
 solana-time-utils = { workspace = true }
-solana-tpu-client = { workspace = true }
 solana-tpu-client-next = { workspace = true, features = ["metrics", "agave-unstable-api", "websocket-node-address-service"] }
 solana-tpu-tools-common = { workspace = true }
 solana-transaction = { workspace = true }

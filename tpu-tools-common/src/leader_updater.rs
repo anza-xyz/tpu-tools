@@ -14,12 +14,9 @@ use {
         },
     },
     async_trait::async_trait,
-    log::{debug, error},
+    log::debug,
     solana_clock::Slot,
-    solana_connection_cache::connection_cache::Protocol,
-    solana_leader_schedule::NUM_CONSECUTIVE_LEADER_SLOTS,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
-    solana_tpu_client::nonblocking::tpu_client::LeaderTpuService,
     solana_tpu_client_next::{
         leader_updater::LeaderUpdater,
         node_address_service::LeaderTpuCacheServiceConfig,
@@ -27,13 +24,7 @@ use {
             Error as WebsocketNodeAddressServiceError, WebsocketNodeAddressService,
         },
     },
-    std::{
-        net::SocketAddr,
-        sync::{
-            Arc,
-            atomic::{AtomicBool, Ordering},
-        },
-    },
+    std::{net::SocketAddr, sync::Arc},
     thiserror::Error,
     tokio_util::sync::CancellationToken,
 };
@@ -58,8 +49,6 @@ impl<T> LeaderUpdaterWithSlot for T where T: LeaderUpdater + LeaderSlotEstimator
 pub enum LeaderUpdaterType {
     /// Always returns a fixed TPU address.
     Pinned(SocketAddr),
-    /// Uses the legacy websocket TPU leader service.
-    Legacy(String),
     /// Uses the websocket node-address service.
     LeaderTracker((String, LeaderTpuCacheServiceConfig)),
     /// Uses Yellowstone gRPC slot updates.
@@ -81,10 +70,6 @@ pub enum Error {
     /// Custom Geyser node-address service failed.
     #[error(transparent)]
     CustomGeyserNodeAddressServiceError(#[from] CustomGeyserNodeAddressServiceError),
-
-    /// Legacy leader updater failed during startup.
-    #[error("Legacy leader updater failed to start")]
-    LegacyLeaderUpdaterInitializationFailed,
 }
 
 /// Creates a leader updater from CLI selection and node-address-service config.
@@ -105,22 +90,7 @@ pub async fn create_leader_updater(
                 address: vec![address],
             }))
         }
-        LeaderTracker::LegacyLeaderTracker => {
-            debug!("Using legacy leader updater");
 
-            let exit = Arc::new(AtomicBool::new(false));
-            let leader_tpu_service =
-                LeaderTpuService::new(rpc_client, &websocket_url, Protocol::QUIC, exit.clone())
-                    .await
-                    .map_err(|error| {
-                        error!("Failed to create a LeaderTpuService: {error}");
-                        Error::LegacyLeaderUpdaterInitializationFailed
-                    })?;
-            Ok(Box::new(LeaderUpdaterService {
-                leader_tpu_service,
-                exit,
-            }))
-        }
         LeaderTracker::WsLeaderTracker => {
             debug!("Using node address service leader tracker updater");
             let leader_tpu_service =
@@ -146,35 +116,6 @@ pub async fn create_leader_updater(
                     .await?;
             Ok(Box::new(leader_tpu_service))
         }
-    }
-}
-
-/// `LeaderUpdaterService` is an implementation of the [`LeaderUpdater`] trait
-/// that dynamically retrieves the current and upcoming leaders by communicating
-/// with the Solana network using [`LeaderTpuService`].
-struct LeaderUpdaterService {
-    leader_tpu_service: LeaderTpuService,
-    exit: Arc<AtomicBool>,
-}
-
-#[async_trait]
-impl LeaderUpdater for LeaderUpdaterService {
-    fn next_leaders(&mut self, lookahead_leaders: usize) -> Vec<SocketAddr> {
-        let lookahead_slots =
-            (lookahead_leaders as u64).saturating_mul(NUM_CONSECUTIVE_LEADER_SLOTS.get() as u64);
-        self.leader_tpu_service.leader_tpu_sockets(lookahead_slots)
-    }
-
-    async fn stop(&mut self) {
-        self.exit.store(true, Ordering::Relaxed);
-        self.leader_tpu_service.join().await;
-    }
-}
-
-#[async_trait]
-impl LeaderSlotEstimator for LeaderUpdaterService {
-    fn get_current_slot(&mut self) -> Slot {
-        self.leader_tpu_service.estimated_current_slot()
     }
 }
 

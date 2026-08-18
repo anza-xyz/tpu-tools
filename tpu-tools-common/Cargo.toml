@@ -28,7 +28,6 @@ serde_json = { workspace = true }
 solana-clap-v3-utils = { workspace = true }
 solana-clock = { workspace = true }
 solana-commitment-config = { workspace = true }
-solana-connection-cache = { workspace = true }
 solana-hash = { workspace = true }
 solana-instruction = { workspace = true }
 solana-keypair = { workspace = true }
@@ -40,7 +39,6 @@ solana-rpc-client-api = { workspace = true }
 solana-sdk-ids = { workspace = true }
 solana-signer = { workspace = true }
 solana-system-interface = { workspace = true }
-solana-tpu-client = { workspace = true }
 solana-tpu-client-next = { workspace = true, features = [
     "agave-unstable-api",
     "metrics",
