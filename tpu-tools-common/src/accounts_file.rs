@@ -7,7 +7,6 @@ use {
     log::error,
     serde::{Deserialize, Serialize},
     solana_keypair::Keypair,
-    solana_native_token::LAMPORTS_PER_SOL,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::client_error::Error as RpcClientError,
     solana_signer::Signer,
@@ -163,11 +162,11 @@ async fn validate_payers(
         return Ok(false);
     }
     for payer in payers {
-        let balance_sol: u64 = rpc_client.get_balance(&payer.pubkey()).await?;
-        if balance_sol.saturating_mul(LAMPORTS_PER_SOL) < desired_balance_lamports {
+        let balance_lamports: u64 = rpc_client.get_balance(&payer.pubkey()).await?;
+        if balance_lamports < desired_balance_lamports {
             error!(
-                "Insufficient balance {}SOL for account {}.",
-                balance_sol,
+                "Insufficient balance {} lamports for account {}.",
+                balance_lamports,
                 payer.pubkey()
             );
             return Ok(false);
@@ -252,6 +251,29 @@ mod tests {
             AccountsFile {
                 payers: vec![keypair.insecure_clone(), keypair.insecure_clone()],
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_validate_payers_checks_lamports_balance() {
+        let rpc_client = Arc::new(RpcClient::new_mock("succeeds".to_string()));
+        let accounts = AccountsFile {
+            payers: vec![Keypair::new()],
+        };
+
+        // Mock RPC returns a balance of 50 lamports. A desired balance above the
+        // actual must fail validation; equal to it must pass.
+        assert!(
+            !validate_payers(&accounts, rpc_client.clone(), 1, 100)
+                .await
+                .unwrap(),
+            "payer with 50 lamports must fail a 100 lamports balance check"
+        );
+        assert!(
+            validate_payers(&accounts, rpc_client.clone(), 1, 50)
+                .await
+                .unwrap(),
+            "payer with 50 lamports must pass a 50 lamports balance check"
         );
     }
 
