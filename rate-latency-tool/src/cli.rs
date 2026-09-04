@@ -145,6 +145,9 @@ pub struct TxAnalysisParams {
     )]
     pub output_csv_file: Option<PathBuf>,
 
+    #[clap(long, help = "File to write connection close statistics.")]
+    pub connection_stats_csv_file: Option<PathBuf>,
+
     #[clap(
         long,
         value_parser = parse_url,
@@ -224,6 +227,7 @@ mod tests {
             ],
             TxAnalysisParams {
                 output_csv_file: Some(PathBuf::from(csv_file.to_string())),
+                connection_stats_csv_file: None,
                 yellowstone_url: Some(yellowstone_url.to_string()),
                 yellowstone_token: None,
                 check_all_txs: false,
@@ -251,6 +255,48 @@ mod tests {
                 account_params,
                 execution_params,
                 analysis_params,
+            },
+            authority: Some(PathBuf::from(&keypair_file_name)),
+            validate_accounts: false,
+        };
+        let actual = ClientCliParameters::try_parse_from(args).unwrap();
+
+        assert_eq!(actual, expected_parameters);
+    }
+
+    #[test]
+    fn test_connection_stats_csv_file() {
+        let keypair_file_name = "/home/testUser/masterKey.json";
+        let connection_stats_csv_file = "/home/testUser/connection-stats.csv";
+
+        let mut args = vec![
+            "test",
+            "-ul",
+            "--authority",
+            keypair_file_name,
+            "run",
+            "--connection-stats-csv-file",
+            connection_stats_csv_file,
+        ];
+        let (exec_args, execution_params) = get_common_execution_params(keypair_file_name);
+        args.extend(exec_args.iter());
+        let (account_args, account_params) = get_common_account_params();
+        args.extend(account_args.iter());
+        args.push("ws-leader-tracker");
+
+        let expected_parameters = ClientCliParameters {
+            json_rpc_url: "http://localhost:8899".to_string(),
+            commitment_config: CommitmentConfig::confirmed(),
+            command: Command::Run {
+                account_params,
+                execution_params,
+                analysis_params: TxAnalysisParams {
+                    output_csv_file: None,
+                    connection_stats_csv_file: Some(PathBuf::from(connection_stats_csv_file)),
+                    yellowstone_url: None,
+                    yellowstone_token: None,
+                    check_all_txs: false,
+                },
             },
             authority: Some(PathBuf::from(&keypair_file_name)),
             validate_accounts: false,

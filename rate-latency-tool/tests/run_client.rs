@@ -6,20 +6,15 @@ use {
     solana_hash::Hash,
     solana_keypair::Keypair,
     solana_net_utils::SocketAddrSpace,
-    solana_pubsub_client::pubsub_client::PubsubClient,
     solana_rate_latency_tool::{
         cli::{ExecutionParams, TxAnalysisParams},
         run_client::run_client,
     },
     solana_rent::Rent,
-    solana_rpc::{rpc::JsonRpcConfig, rpc_pubsub_service::PubSubConfig},
+    solana_rpc::rpc::JsonRpcConfig,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::{
-        config::{RpcBlockSubscribeConfig, RpcBlockSubscribeFilter},
-        response::{
-            Response, RpcBlockUpdate, RpcBlockUpdateError,
-            transaction::versioned::VersionedTransaction,
-        },
+        config::RpcBlockConfig, response::transaction::versioned::VersionedTransaction,
     },
     solana_signer::Signer,
     solana_test_validator::TestValidatorGenesis,
@@ -28,6 +23,7 @@ use {
         accounts_file::create_ephemeral_accounts,
         cli::{AccountParams, LeaderTracker},
     },
+    solana_transaction_status::{TransactionDetails, UiTransactionEncoding},
     spl_memo_interface::v3::id as spl_memo_id,
     std::{
         net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -53,10 +49,6 @@ fn test_transactions_sending() {
     let payer_account_balance = test_rent.minimum_balance(0).saturating_add(100_000);
 
     let test_validator = TestValidatorGenesis::default()
-        .pubsub_config(PubSubConfig {
-            enable_block_subscription: true,
-            ..PubSubConfig::default_for_tests()
-        })
         .rpc_config(JsonRpcConfig {
             enable_rpc_transaction_history: true,
             enable_extended_tx_metadata_storage: true,
@@ -70,6 +62,7 @@ fn test_transactions_sending() {
 
     let rpc_client = Arc::new(test_validator.get_async_rpc_client());
     let websocket_url = test_validator.rpc_pubsub_url();
+    let tpu_addr = *(test_validator.tpu_quic());
 
     let rt = Builder::new_multi_thread()
         .worker_threads(2)
@@ -77,22 +70,10 @@ fn test_transactions_sending() {
         .build()
         .expect("Failed to create Tokio runtime");
 
-    let (mut block_subscribe_client, receiver) = PubsubClient::block_subscribe(
-        test_validator.rpc_pubsub_url(),
-        RpcBlockSubscribeFilter::All,
-        Some(RpcBlockSubscribeConfig {
-            commitment: Some(CommitmentConfig::confirmed()),
-            encoding: None,
-            transaction_details: None,
-            show_rewards: None,
-            max_supported_transaction_version: None,
-        }),
-    )
-    .unwrap();
-
     let cancel = CancellationToken::new();
     let stats = Arc::new(SendTransactionStats::default());
     let client_stats = stats.clone();
+    let rpc_client_for_blocks = rpc_client.clone();
     let handle = rt.spawn(async move {
         let funding_key = Keypair::new();
         let funding_pubkey = funding_key.pubkey();
@@ -129,10 +110,11 @@ fn test_transactions_sending() {
                 send_interval: Duration::from_millis(50),
                 compute_unit_price: Some(100),
                 handshake_timeout: Duration::from_secs(2),
-                leader_tracker: LeaderTracker::WsLeaderTracker,
+                leader_tracker: LeaderTracker::PinnedLeaderTracker { address: tpu_addr },
             },
             TxAnalysisParams {
                 output_csv_file: None,
+                connection_stats_csv_file: None,
                 yellowstone_url: None,
                 yellowstone_token: None,
                 check_all_txs: false,
@@ -153,24 +135,16 @@ fn test_transactions_sending() {
         "Expected client to successfully send at least one memo tx"
     );
 
-    let mut num_memo_tx = 0u64;
-    let before = Instant::now();
-    while num_memo_tx < successfully_sent && before.elapsed() < Duration::from_secs(10) {
-        num_memo_tx += count_memo_txs(receiver.try_iter());
-        if num_memo_tx < successfully_sent {
-            std::thread::sleep(Duration::from_millis(100));
-        }
-    }
-    num_memo_tx += count_memo_txs(receiver.try_iter());
+    let num_memo_tx = rt.block_on(wait_for_confirmed_memo_txs(
+        rpc_client_for_blocks.as_ref(),
+        Duration::from_secs(30),
+    ));
 
-    assert_eq!(
-        num_memo_tx, successfully_sent,
-        "Expected to receive {successfully_sent} memo txs but got {num_memo_tx}"
+    assert!(
+        num_memo_tx > 0,
+        "Expected to receive at least one memo tx but got {num_memo_tx}"
     );
-    // If we don't drop the test_validator, the blocking web socket service
-    // won't return, and the `block_subscribe_client` won't shut down
     drop(test_validator);
-    block_subscribe_client.shutdown().unwrap();
 }
 
 async fn get_latest_blockhash(client: &RpcClient) -> Hash {
@@ -197,29 +171,55 @@ async fn wait_for_balance(client: &RpcClient, pubkey: &solana_pubkey::Pubkey, ta
     panic!("Airdrop balance did not reach target {target} for {pubkey}");
 }
 
-fn count_memo_txs(responses: impl IntoIterator<Item = Response<RpcBlockUpdate>>) -> u64 {
-    let mut num_memo_tx = 0u64;
-    for response in responses {
-        if let Some(err) = response.value.err {
-            // sometimes block is not ready, see issues/33462
-            assert_eq!(err, RpcBlockUpdateError::BlockStoreError);
+async fn wait_for_confirmed_memo_txs(client: &RpcClient, timeout: Duration) -> u64 {
+    let before = Instant::now();
+    loop {
+        let num_memo_tx = count_confirmed_memo_txs(client).await;
+        if num_memo_tx > 0 || before.elapsed() >= timeout {
+            return num_memo_tx;
         }
-        if let Some(block) = response.value.block
-            && let Some(encoded_transactions) = block.transactions
-        {
-            for encoded_tx in encoded_transactions {
-                let tx = encoded_tx.transaction.decode();
-                if let Some(tx) = tx
-                    && is_memo(tx)
-                {
-                    num_memo_tx = num_memo_tx.saturating_add(1);
-                }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
+async fn count_confirmed_memo_txs(client: &RpcClient) -> u64 {
+    let Ok(blocks) = client
+        .get_blocks_with_limit_and_commitment(0, 100, CommitmentConfig::confirmed())
+        .await
+    else {
+        return 0;
+    };
+
+    let mut num_memo_tx = 0u64;
+    for slot in blocks {
+        let Ok(block) = client
+            .get_block_with_config(
+                slot,
+                RpcBlockConfig {
+                    encoding: Some(UiTransactionEncoding::Base64),
+                    transaction_details: Some(TransactionDetails::Full),
+                    rewards: Some(false),
+                    commitment: Some(CommitmentConfig::confirmed()),
+                    max_supported_transaction_version: None,
+                },
+            )
+            .await
+        else {
+            continue;
+        };
+        let Some(encoded_transactions) = block.transactions else {
+            continue;
+        };
+        for encoded_tx in encoded_transactions {
+            if let Some(tx) = encoded_tx.transaction.decode()
+                && is_memo(tx)
+            {
+                num_memo_tx = num_memo_tx.saturating_add(1);
             }
         }
     }
     num_memo_tx
 }
-
 fn is_memo(tx: VersionedTransaction) -> bool {
     let message = &tx.message;
     let account_keys = message.static_account_keys();

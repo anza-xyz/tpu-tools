@@ -1,6 +1,7 @@
 use {
     crate::{
         cli::{ExecutionParams, TxAnalysisParams},
+        connection_stats_writer::{ConnectionStatsRecord, run_connection_stats_writer},
         csv_writer::{CSVRecord, run_csv_writer},
         error::RateLatencyToolError,
         run_rate_latency_tool_scheduler::run_rate_latency_tool_scheduler,
@@ -27,7 +28,7 @@ use {
         leader_updater::create_leader_updater,
     },
     solana_transaction::{Transaction, versioned::VersionedTransaction},
-    std::{num::NonZeroUsize, sync::Arc, time::Duration},
+    std::{collections::HashMap, net::SocketAddr, num::NonZeroUsize, sync::Arc, time::Duration},
     tokio::{
         sync::{mpsc, watch},
         task::JoinSet,
@@ -64,6 +65,7 @@ pub async fn run_client(
     }: ExecutionParams,
     TxAnalysisParams {
         output_csv_file,
+        connection_stats_csv_file,
         yellowstone_url,
         yellowstone_token,
         check_all_txs,
@@ -81,6 +83,24 @@ pub async fn run_client(
     };
 
     let mut tasks = JoinSet::<Result<(), RateLatencyToolError>>::new();
+
+    let connection_stats_sender = if let Some(connection_stats_csv_file) = connection_stats_csv_file
+    {
+        let (connection_stats_sender, connection_stats_receiver) = mpsc::unbounded_channel();
+        tasks.spawn(async move {
+            run_connection_stats_writer(connection_stats_csv_file, connection_stats_receiver)
+                .await?;
+            Ok(())
+        });
+        Some(connection_stats_sender)
+    } else {
+        None
+    };
+    let validator_pubkey_by_tpu_address = if connection_stats_sender.is_some() {
+        validator_pubkey_by_tpu_address(rpc_client.as_ref()).await
+    } else {
+        HashMap::new()
+    };
 
     let (tx_tracker_sender, tx_tracker_receiver) = mpsc::unbounded_channel();
     // If yellowstone is active, we want to receive transactions for some time
@@ -198,6 +218,7 @@ pub async fn run_client(
 
             let mut payer_iter = accounts.payers.iter().cycle();
             let mut tx_id: usize = 0;
+            let connection_stats = stats.clone();
             let scheduler = run_rate_latency_tool_scheduler(
                 rate,
                 handshake_timeout,
@@ -239,6 +260,28 @@ pub async fn run_client(
                     if let Err(err) = tx_tracker_sender.send(record) {
                         error!(
                             "Unexpectedly failed to send transaction record to the tracker: {err}"
+                        );
+                        cancel.cancel();
+                    }
+                },
+                |tpu_address, close_reason| {
+                    let Some(connection_stats_sender) = &connection_stats_sender else {
+                        return;
+                    };
+                    let validator_pubkey = validator_pubkey_by_tpu_address
+                        .get(&tpu_address)
+                        .cloned()
+                        .unwrap_or_default();
+                    let record = ConnectionStatsRecord::new(
+                        close_reason,
+                        validator_pubkey,
+                        tpu_address,
+                        connection_stats.to_non_atomic(),
+                    );
+                    if let Err(err) = connection_stats_sender.send(record) {
+                        error!(
+                            "Unexpectedly failed to send connection stats record to the writer: \
+                             {err}"
                         );
                         cancel.cancel();
                     }
@@ -303,4 +346,21 @@ fn create_memo_transaction(
     .into();
 
     (tx.signatures[0], wincode::serialize(&tx).unwrap().into())
+}
+
+async fn validator_pubkey_by_tpu_address(rpc_client: &RpcClient) -> HashMap<SocketAddr, String> {
+    match rpc_client.get_cluster_nodes().await {
+        Ok(cluster_nodes) => cluster_nodes
+            .into_iter()
+            .filter_map(|contact_info| {
+                contact_info
+                    .tpu_quic
+                    .map(|tpu_address| (tpu_address, contact_info.pubkey))
+            })
+            .collect(),
+        Err(err) => {
+            warn!("Failed to fetch cluster nodes for connection stats output: {err}");
+            HashMap::new()
+        }
+    }
 }
