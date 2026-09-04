@@ -33,6 +33,7 @@ solana-instruction = { workspace = true }
 solana-keypair = { workspace = true }
 solana-leader-schedule = { workspace = true }
 solana-native-token = { workspace = true }
+solana-net-utils = { workspace = true }
 solana-pubkey = { workspace = true }
 solana-rpc-client = { workspace = true }
 solana-rpc-client-api = { workspace = true }
@@ -45,6 +46,7 @@ solana-tpu-client-next = { workspace = true, features = [
     "websocket-node-address-service",
 ] }
 thiserror = { workspace = true }
+wincode = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tonic = { workspace = true }
@@ -54,7 +56,6 @@ yellowstone-grpc-proto = { workspace = true }
 [dev-dependencies]
 rand = { workspace = true }
 solana-sha256-hasher = { workspace = true }
-wincode = { workspace = true }
 
 [lints]
 workspace = true

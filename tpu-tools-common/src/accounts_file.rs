@@ -3,7 +3,9 @@
 //! Account files store payer keypairs that can be reused between benchmark
 //! runs, avoiding repeated account creation on public clusters.
 use {
-    crate::accounts_creator::{AccountsCreator, Error as AccountsCreatorError},
+    crate::accounts_creator::{
+        AccountCreationSender, AccountsCreator, Error as AccountsCreatorError,
+    },
     log::error,
     serde::{Deserialize, Serialize},
     solana_keypair::Keypair,
@@ -100,11 +102,32 @@ pub async fn create_ephemeral_accounts(
     payers_account_balance_lamports: u64,
     validate_accounts: bool,
 ) -> Result<AccountsFile, Error> {
-    let accounts_creator = AccountsCreator::new(
+    create_ephemeral_accounts_with_sender(
+        rpc_client,
+        authority,
+        num_payers,
+        payers_account_balance_lamports,
+        validate_accounts,
+        AccountCreationSender::Rpc,
+    )
+    .await
+}
+
+/// Creates payer accounts using the provided transaction sender.
+pub async fn create_ephemeral_accounts_with_sender(
+    rpc_client: Arc<RpcClient>,
+    authority: Keypair,
+    num_payers: usize,
+    payers_account_balance_lamports: u64,
+    validate_accounts: bool,
+    transaction_sender: AccountCreationSender,
+) -> Result<AccountsFile, Error> {
+    let accounts_creator = AccountsCreator::new_with_transaction_sender(
         rpc_client.clone(),
         authority,
         num_payers,
         payers_account_balance_lamports,
+        transaction_sender,
     );
     let accounts = accounts_creator.create().await?;
     if validate_accounts
@@ -134,12 +157,35 @@ pub async fn create_file_persisted_accounts(
     payers_account_balance: u64,
     validate_accounts: bool,
 ) -> Result<(), Error> {
-    let accounts = create_ephemeral_accounts(
+    create_file_persisted_accounts_with_sender(
+        rpc_client,
+        authority,
+        accounts_file,
+        num_payers,
+        payers_account_balance,
+        validate_accounts,
+        AccountCreationSender::Rpc,
+    )
+    .await
+}
+
+/// Creates payer accounts with the provided transaction sender and persists them.
+pub async fn create_file_persisted_accounts_with_sender(
+    rpc_client: Arc<RpcClient>,
+    authority: Keypair,
+    accounts_file: PathBuf,
+    num_payers: usize,
+    payers_account_balance: u64,
+    validate_accounts: bool,
+    transaction_sender: AccountCreationSender,
+) -> Result<(), Error> {
+    let accounts = create_ephemeral_accounts_with_sender(
         rpc_client,
         authority,
         num_payers,
         payers_account_balance,
         validate_accounts,
+        transaction_sender,
     )
     .await?;
 

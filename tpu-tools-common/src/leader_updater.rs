@@ -76,6 +76,48 @@ pub enum Error {
 ///
 /// `websocket_url` is used by websocket-backed modes. Pinned and Yellowstone
 /// modes ignore it.
+pub async fn create_tpu_leader_updater(
+    rpc_client: Arc<RpcClient>,
+    leader_tracker: LeaderTracker,
+    config: LeaderTpuCacheServiceConfig,
+    websocket_url: String,
+    cancel: CancellationToken,
+) -> Result<Box<dyn LeaderUpdater>, Error> {
+    match leader_tracker {
+        LeaderTracker::PinnedLeaderTracker { address } => {
+            debug!("Using pinned leader updater");
+            Ok(Box::new(PinnedLeaderUpdater {
+                address: vec![address],
+            }))
+        }
+
+        LeaderTracker::WsLeaderTracker => {
+            debug!("Using node address service leader tracker updater");
+            let leader_tpu_service =
+                WebsocketNodeAddressService::run(rpc_client, websocket_url, config, cancel).await?;
+            Ok(Box::new(leader_tpu_service))
+        }
+        LeaderTracker::YellowstoneLeaderTracker { url, token } => {
+            debug!("Using yellowstone leader tracker updater");
+            let leader_tpu_service = YellowstoneNodeAddressService::run(
+                rpc_client,
+                url,
+                token.as_deref(),
+                config,
+                cancel,
+            )
+            .await?;
+            Ok(Box::new(leader_tpu_service))
+        }
+        LeaderTracker::CustomLeaderTracker { bind_address } => {
+            debug!("Using custom geyser node address service leader tracker updater");
+            let leader_tpu_service =
+                CustomGeyserNodeAddressService::run(rpc_client, bind_address, config, cancel)
+                    .await?;
+            Ok(Box::new(leader_tpu_service))
+        }
+    }
+}
 pub async fn create_leader_updater(
     rpc_client: Arc<RpcClient>,
     leader_tracker: LeaderTracker,

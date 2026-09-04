@@ -11,10 +11,15 @@ use {
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_signer::{EncodableKey, Signer},
     solana_tpu_client_next::SendTransactionStats,
-    solana_tpu_tools_common::accounts_file::{
-        create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
+    solana_tpu_tools_common::{
+        accounts_creator::create_tpu_account_creation_client,
+        accounts_file::{
+            create_ephemeral_accounts_with_sender, create_file_persisted_accounts_with_sender,
+            read_accounts_file,
+        },
+        cli::LeaderTracker,
     },
-    std::{sync::Arc, time::Duration},
+    std::{num::NonZeroUsize, sync::Arc, time::Duration},
     tokio_util::sync::CancellationToken,
 };
 
@@ -62,14 +67,29 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
             execution_params,
             analysis_params,
         } => {
-            let accounts = create_ephemeral_accounts(
+            let account_creation_client = create_tpu_account_creation_client(
+                rpc_client.clone(),
+                execution_params.leader_tracker.clone(),
+                websocket_url.clone(),
+                execution_params.bind,
+                execution_params.staked_identity_file.clone(),
+                NonZeroUsize::new(execution_params.num_max_open_connections)
+                    .expect("num-max-open-connections must be non-zero"),
+                execution_params.send_fanout,
+                cancel.child_token(),
+            )
+            .await?;
+            let accounts = create_ephemeral_accounts_with_sender(
                 rpc_client.clone(),
                 authority,
                 account_params.num_payers,
                 account_params.payer_account_balance,
                 parameters.validate_accounts,
+                account_creation_client.transaction_sender.clone(),
             )
-            .await?;
+            .await;
+            account_creation_client.shutdown().await?;
+            let accounts = accounts?;
             let stats = Arc::new(SendTransactionStats::default());
             let metrics_task = spawn_metrics_reporter(stats.clone(), cancel.clone());
             let result = run_client(
@@ -105,15 +125,31 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
             finish_client_run(result, cancel, metrics_task).await?;
         }
         Command::WriteAccounts(write_accounts) => {
-            create_file_persisted_accounts(
+            let account_creation_client = create_tpu_account_creation_client(
+                rpc_client.clone(),
+                LeaderTracker::WsLeaderTracker,
+                websocket_url,
+                "0.0.0.0:0"
+                    .parse()
+                    .expect("default bind address should be valid"),
+                None,
+                NonZeroUsize::new(16).expect("default max open connections must be non-zero"),
+                1,
+                cancel.child_token(),
+            )
+            .await?;
+            let result = create_file_persisted_accounts_with_sender(
                 rpc_client.clone(),
                 authority,
                 write_accounts.accounts_file,
                 write_accounts.account_params.num_payers,
                 write_accounts.account_params.payer_account_balance,
                 parameters.validate_accounts,
+                account_creation_client.transaction_sender.clone(),
             )
-            .await?;
+            .await;
+            account_creation_client.shutdown().await?;
+            result?;
         }
     }
 

@@ -9616,6 +9616,7 @@ dependencies = [
  "solana-keypair",
  "solana-leader-schedule",
  "solana-native-token",
+ "solana-net-utils",
  "solana-pubkey 4.3.0",
  "solana-rpc-client",
  "solana-rpc-client-api",

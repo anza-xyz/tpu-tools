@@ -1,4 +1,4 @@
-//! RPC-backed payer account creation for TPU tools.
+//! Payer account creation for TPU tools.
 //!
 //! This module creates funded payer accounts that transaction generators can
 //! rotate through to avoid introducing unnecessary account contention.
@@ -7,6 +7,8 @@ use {
     crate::{
         accounts_file::{AccountsFile, write_accounts_file},
         blockhash_updater::BlockhashUpdater,
+        cli::LeaderTracker,
+        leader_updater::create_tpu_leader_updater,
     },
     chrono::prelude::Utc,
     futures::future::join_all,
@@ -14,6 +16,7 @@ use {
     solana_commitment_config::CommitmentConfig,
     solana_hash::Hash,
     solana_keypair::Keypair,
+    solana_net_utils::sockets::bind_to,
     solana_pubkey::Pubkey,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::{
@@ -21,9 +24,13 @@ use {
         response::transaction::{Transaction, versioned::VersionedTransaction},
     },
     solana_sdk_ids::system_program,
-    solana_signer::Signer,
+    solana_signer::{EncodableKey, Signer},
     solana_system_interface::instruction as system_instruction,
-    std::{path::PathBuf, sync::Arc},
+    solana_tpu_client_next::{
+        Client, ClientBuilder, ClientError as TpuClientError, TransactionSender,
+        client_builder::ClientBuilderError, node_address_service::LeaderTpuCacheServiceConfig,
+    },
+    std::{net::SocketAddr, num::NonZeroUsize, path::PathBuf, sync::Arc},
     thiserror::Error,
     tokio::{
         sync::watch,
@@ -55,9 +62,86 @@ pub enum Error {
     /// Account creation did not produce the requested number of payer accounts.
     #[error("Failed to create account")]
     CreateAccountFailure,
+
+    /// TPU client could not be built.
+    #[error(transparent)]
+    TpuClientBuilderError(#[from] ClientBuilderError),
+
+    /// TPU client request failed.
+    #[error(transparent)]
+    TpuClientError(#[from] TpuClientError),
+
+    /// Leader updater creation failed.
+    #[error(transparent)]
+    LeaderUpdaterError(#[from] crate::leader_updater::Error),
+
+    /// UDP bind failed.
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+
+    /// A keypair file could not be read.
+    #[error("Failed to read keypair file")]
+    KeypairReadFailure,
 }
 
-/// Creates funded payer accounts through a Solana RPC endpoint.
+/// Transport used to submit account-creation transactions.
+#[derive(Clone)]
+pub enum AccountCreationSender {
+    /// Submit and confirm transactions through RPC.
+    Rpc,
+    /// Submit transactions through TPU and confirm them through RPC.
+    Tpu(TransactionSender),
+}
+
+/// TPU client used while creating accounts.
+pub struct TpuAccountCreationClient {
+    pub transaction_sender: AccountCreationSender,
+    client: Client,
+}
+
+impl TpuAccountCreationClient {
+    pub async fn shutdown(self) -> Result<(), Error> {
+        self.client.shutdown().await?;
+        Ok(())
+    }
+}
+
+pub async fn create_tpu_account_creation_client(
+    rpc_client: Arc<RpcClient>,
+    leader_tracker: LeaderTracker,
+    websocket_url: String,
+    bind: SocketAddr,
+    stake_identity_file: Option<PathBuf>,
+    num_max_open_connections: NonZeroUsize,
+    send_fanout: usize,
+    cancel: tokio_util::sync::CancellationToken,
+) -> Result<TpuAccountCreationClient, Error> {
+    let stake_identity = stake_identity_file
+        .map(|path| Keypair::read_from_file(path).map_err(|_| Error::KeypairReadFailure))
+        .transpose()?;
+    let leader_updater = create_tpu_leader_updater(
+        rpc_client,
+        leader_tracker,
+        LeaderTpuCacheServiceConfig::default(),
+        websocket_url,
+        cancel.clone(),
+    )
+    .await?;
+    let bind_socket = bind_to(bind.ip(), bind.port())?;
+    let (transaction_sender, client) = ClientBuilder::new(leader_updater)
+        .bind_socket(bind_socket)
+        .identity(stake_identity.as_ref())
+        .max_cache_size(num_max_open_connections)
+        .leader_send_fanout(send_fanout)
+        .cancel_token(cancel)
+        .build()?;
+
+    Ok(TpuAccountCreationClient {
+        transaction_sender: AccountCreationSender::Tpu(transaction_sender),
+        client,
+    })
+}
+/// Creates funded payer accounts.
 ///
 /// The creator checks that the authority has enough lamports to fund the
 /// requested accounts, requests an airdrop when needed, then sends batched
@@ -67,6 +151,7 @@ pub struct AccountsCreator {
     authority: Keypair,
     num_payers: usize,
     payer_account_balance_lamports: u64,
+    transaction_sender: AccountCreationSender,
 }
 
 impl AccountsCreator {
@@ -85,6 +170,24 @@ impl AccountsCreator {
             authority,
             num_payers,
             payer_account_balance_lamports,
+            transaction_sender: AccountCreationSender::Rpc,
+        }
+    }
+
+    /// Creates a new account creator using an explicit transaction sender.
+    pub fn new_with_transaction_sender(
+        rpc_client: Arc<RpcClient>,
+        authority: Keypair,
+        num_payers: usize,
+        payer_account_balance_lamports: u64,
+        transaction_sender: AccountCreationSender,
+    ) -> Self {
+        Self {
+            rpc_client,
+            authority,
+            num_payers,
+            payer_account_balance_lamports,
+            transaction_sender,
         }
     }
 
@@ -181,6 +284,7 @@ impl AccountsCreator {
             self.num_payers,
             self.payer_account_balance_lamports,
             MAX_CONTINUOUS_FAILED_ATTEMPTS,
+            &self.transaction_sender,
         )
         .await
     }
@@ -257,6 +361,21 @@ fn create_transaction_batch(
 async fn send_transaction_batch(
     rpc_client: &Arc<RpcClient>,
     transaction_batch: Vec<(VersionedTransaction, Vec<Keypair>)>,
+    transaction_sender: &AccountCreationSender,
+) -> Vec<Keypair> {
+    match transaction_sender {
+        AccountCreationSender::Rpc => {
+            send_transaction_batch_by_rpc(rpc_client, transaction_batch).await
+        }
+        AccountCreationSender::Tpu(transaction_sender) => {
+            send_transaction_batch_by_tpu(rpc_client, transaction_sender, transaction_batch).await
+        }
+    }
+}
+
+async fn send_transaction_batch_by_rpc(
+    rpc_client: &Arc<RpcClient>,
+    transaction_batch: Vec<(VersionedTransaction, Vec<Keypair>)>,
 ) -> Vec<Keypair> {
     // send txs concurrently to RPC with confirmation
     let futures = transaction_batch
@@ -271,6 +390,46 @@ async fn send_transaction_batch(
     results
         .into_iter()
         .filter_map(|(result, account_keypairs)| result.ok().map(|_| account_keypairs))
+        .flatten()
+        .collect()
+}
+
+async fn send_transaction_batch_by_tpu(
+    rpc_client: &Arc<RpcClient>,
+    transaction_sender: &TransactionSender,
+    transaction_batch: Vec<(VersionedTransaction, Vec<Keypair>)>,
+) -> Vec<Keypair> {
+    let futures = transaction_batch
+        .into_iter()
+        .map(|(tx, account_keypairs)| async move {
+            let Some(signature) = tx.signatures.first().copied() else {
+                return (false, account_keypairs);
+            };
+
+            let Ok(wire_transaction) = wincode::serialize(&tx) else {
+                return (false, account_keypairs);
+            };
+
+            let success = if transaction_sender
+                .send_transaction(wire_transaction)
+                .await
+                .is_ok()
+            {
+                rpc_client
+                    .confirm_transaction_with_commitment(&signature, CommitmentConfig::finalized())
+                    .await
+                    .map(|response| response.value)
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+
+            (success, account_keypairs)
+        });
+    let results = join_all(futures).await;
+    results
+        .into_iter()
+        .filter_map(|(success, account_keypairs)| success.then_some(account_keypairs))
         .flatten()
         .collect()
 }
@@ -297,6 +456,7 @@ async fn create_accounts(
     num_accounts: usize,
     balance_lamports: u64,
     max_continuos_failed_attempts: usize,
+    transaction_sender: &AccountCreationSender,
 ) -> Vec<Keypair> {
     // It makes sense to send concurrently subset
     // of transactions to avoid having expired block height exceed error.
@@ -348,7 +508,8 @@ async fn create_accounts(
 
         let transaction_batch =
             create_transaction_batch(authorities, blockhash, current_batch_size, balance_lamports);
-        let newly_created_accounts = send_transaction_batch(rpc_client, transaction_batch).await;
+        let newly_created_accounts =
+            send_transaction_batch(rpc_client, transaction_batch, transaction_sender).await;
         num_continuous_failed_attempts = if newly_created_accounts.is_empty() {
             num_continuous_failed_attempts + 1
         } else {
@@ -463,7 +624,15 @@ mod tests {
     async fn test_create_accounts_rpc_always_succeeds() {
         let rpc_client = Arc::new(RpcClient::new_mock("succeeds".to_string()));
 
-        let accounts = create_accounts(&rpc_client, &[Keypair::new()], 128, 1, 10).await;
+        let accounts = create_accounts(
+            &rpc_client,
+            &[Keypair::new()],
+            128,
+            1,
+            10,
+            &AccountCreationSender::Rpc,
+        )
+        .await;
 
         assert_eq!(accounts.len(), 128);
     }
@@ -473,7 +642,15 @@ mod tests {
     async fn test_create_accounts_rpc_always_fails() {
         let rpc_client = Arc::new(RpcClient::new_mock("fails".to_string()));
 
-        let accounts = create_accounts(&rpc_client, &[Keypair::new()], 128, 1, 10).await;
+        let accounts = create_accounts(
+            &rpc_client,
+            &[Keypair::new()],
+            128,
+            1,
+            10,
+            &AccountCreationSender::Rpc,
+        )
+        .await;
 
         assert_eq!(accounts.len(), 0);
     }
@@ -535,7 +712,15 @@ mod tests {
     async fn test_create_accounts_rpc_send_fails() {
         let rpc_client = Arc::new(RpcClient::new_mock("malicious".to_string()));
 
-        let accounts = create_accounts(&rpc_client, &[Keypair::new()], 1, 1, 10).await;
+        let accounts = create_accounts(
+            &rpc_client,
+            &[Keypair::new()],
+            1,
+            1,
+            10,
+            &AccountCreationSender::Rpc,
+        )
+        .await;
 
         assert_eq!(accounts.len(), 0);
     }
@@ -546,7 +731,15 @@ mod tests {
     async fn test_create_accounts_half_rpc_succeeds() {
         let rpc_client = Arc::new(create_mock_rpc_client(&["succeeds", "fails"]));
 
-        let accounts = create_accounts(&rpc_client, &[Keypair::new()], 12, 1, 10).await;
+        let accounts = create_accounts(
+            &rpc_client,
+            &[Keypair::new()],
+            12,
+            1,
+            10,
+            &AccountCreationSender::Rpc,
+        )
+        .await;
 
         assert_eq!(accounts.len(), 12);
     }
@@ -564,7 +757,15 @@ mod tests {
             "sig_not_found",
         ]));
 
-        let accounts = create_accounts(&rpc_client, &[Keypair::new()], 121, 1, 10).await;
+        let accounts = create_accounts(
+            &rpc_client,
+            &[Keypair::new()],
+            121,
+            1,
+            10,
+            &AccountCreationSender::Rpc,
+        )
+        .await;
 
         assert_eq!(accounts.len(), 121);
     }
