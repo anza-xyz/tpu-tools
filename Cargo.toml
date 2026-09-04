@@ -31,7 +31,7 @@ crossbeam-channel = "0.5.16"
 csv-async = "1.2"
 futures = "0.3.34"
 futures-util = "0.3.34"
-itertools = "0.14.0"
+itertools = "0.15.0"
 jemallocator = { package = "tikv-jemallocator", version = "0.6.0", features = [
     "unprefixed_malloc_on_supported_platforms",
     "stats",
