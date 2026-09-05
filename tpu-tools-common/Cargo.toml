@@ -46,10 +46,10 @@ solana-tpu-client-next = { workspace = true, features = [
     "websocket-node-address-service",
 ] }
 thiserror = { workspace = true }
-wincode = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tonic = { workspace = true }
+wincode = { workspace = true }
 yellowstone-grpc-client = { workspace = true }
 yellowstone-grpc-proto = { workspace = true }
 
