@@ -43,6 +43,15 @@ use {
 
 #[test]
 fn test_transactions_sending() {
+    run_transactions_test(false);
+}
+
+#[test]
+fn test_shutdown_with_unresponsive_tpu() {
+    run_transactions_test(true);
+}
+
+fn run_transactions_test(unresponsive_tpu: bool) {
     agave_logger::setup_with("debug");
 
     let mint_keypair = Keypair::new();
@@ -71,7 +80,13 @@ fn test_transactions_sending() {
 
     let rpc_client = Arc::new(test_validator.get_async_rpc_client());
     let websocket_url = test_validator.rpc_pubsub_url();
-    let tpu_addr = *(test_validator.tpu_quic());
+    // Retain the socket so QUIC attempts time out instead of receiving ICMP errors.
+    let silent_socket = std::net::UdpSocket::bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
+    let tpu_addr = if unresponsive_tpu {
+        silent_socket.local_addr().unwrap()
+    } else {
+        *test_validator.tpu_quic()
+    };
 
     let rt = Builder::new_multi_thread()
         .worker_threads(2)
@@ -94,6 +109,7 @@ fn test_transactions_sending() {
     .unwrap();
 
     let cancel = CancellationToken::new();
+    let shutdown_token = cancel.clone();
     let (stats_sender, stats_receiver) = tokio::sync::oneshot::channel();
     let handle = rt.spawn(async move {
         let funding_key = Keypair::new();
@@ -143,7 +159,7 @@ fn test_transactions_sending() {
                 }],
                 duration: Some(Duration::from_secs(2)),
                 num_transactions: None,
-                target_tps: Some(10),
+                target_tps: if unresponsive_tpu { None } else { Some(10) },
                 initial_congestion_window: None,
                 drain_seconds: 0,
                 num_max_open_connections: 1,
@@ -162,7 +178,8 @@ fn test_transactions_sending() {
         .await
     });
 
-    rt.block_on(handle)
+    rt.block_on(async { tokio::time::timeout(Duration::from_secs(60), handle).await })
+        .unwrap()
         .expect("Should not fail joining client task.")
         .expect("Should not fail running client.");
 
@@ -174,6 +191,16 @@ fn test_transactions_sending() {
         .iter()
         .map(|stats| stats.to_non_atomic().successfully_sent)
         .sum();
+    if unresponsive_tpu {
+        assert!(shutdown_token.is_cancelled());
+        silent_socket.set_nonblocking(true).unwrap();
+        let mut packet = [0u8; 2048];
+        assert!(silent_socket.recv_from(&mut packet).is_ok());
+        assert_eq!(successfully_sent, 0u64);
+        drop(test_validator);
+        block_subscribe_client.shutdown().unwrap();
+        return;
+    }
     assert!(
         successfully_sent > 0,
         "Expected client to successfully send at least one transfer tx"

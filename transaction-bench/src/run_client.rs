@@ -31,8 +31,6 @@ use {
     tokio_util::sync::CancellationToken,
 };
 
-const GENERATOR_CHANNEL_SIZE: usize = 32;
-
 /// Empirically chosen size of the connection worker channel. Lower/higher values gives
 /// significantly smaller txs blocks on testnet.
 const WORKER_CHANNEL_SIZE: usize = 20;
@@ -94,6 +92,14 @@ pub async fn run_client(
         .simple_transfer_tx_params
         .tx_batch_size
         .get();
+    let generator_channel_size = workers_pull_size
+        .checked_mul(generate_tx_batch_size)
+        .ok_or_else(|| {
+            BenchClientError::InvalidCliArguments(format!(
+                "--workers-pull-size ({workers_pull_size}) * --tx-batch-size \
+                 ({generate_tx_batch_size}) overflows usize"
+            ))
+        })?;
     if let Some(target_tps) = target_tps {
         info!("Using {workers_pull_size} generator workers for target {target_tps} tx/s.");
     }
@@ -167,7 +173,7 @@ pub async fn run_client(
     let mut transaction_senders = Vec::with_capacity(num_endpoints);
     let mut transaction_receivers = Vec::with_capacity(num_endpoints);
     for _ in 0..num_endpoints {
-        let (sender, receiver) = mpsc::channel(GENERATOR_CHANNEL_SIZE);
+        let (sender, receiver) = mpsc::channel(generator_channel_size);
         transaction_senders.push(sender);
         transaction_receivers.push(receiver);
     }
@@ -190,6 +196,7 @@ pub async fn run_client(
         target_tps,
         generate_tx_batch_size,
         workers_pull_size,
+        cancel.child_token(),
     );
 
     let leader_updater_config = LeaderTpuCacheServiceConfig {
@@ -233,9 +240,7 @@ pub async fn run_client(
     }
 
     let mut result = join_service(transaction_generator_task_handle, "TransactionGenerator").await;
-    if result.is_err() {
-        cancel.cancel();
-    } else {
+    if result.is_ok() {
         // The generator has dropped its senders. Keep our retained clones alive for
         // the drain window so the schedulers don't tear down while tpu-client-next's
         // worker queues and quinn send buffers still hold in-flight transactions.
@@ -244,7 +249,10 @@ pub async fn run_client(
             tokio::time::sleep(Duration::from_secs(drain_seconds)).await;
         }
     }
-    // Closing the channels lets the tpu-client-next instances shut down.
+    // After the drain phase, cancel services before joining scheduler tasks. This
+    // also wakes schedulers that are blocked below the transaction channel.
+    cancel.cancel();
+    // Closing the channels lets the tpu-client-next instances finish draining.
     drop(drain_senders);
 
     let blockhash_result = join_service(blockhash_task_handle, "BlockhashUpdater").await;

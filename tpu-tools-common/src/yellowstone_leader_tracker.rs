@@ -5,7 +5,7 @@
 
 use {
     futures::Stream,
-    futures_util::stream::StreamExt,
+    futures_util::{StreamExt, stream},
     log::*,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_tpu_client_next::node_address_service::{
@@ -57,8 +57,7 @@ impl YellowstoneNodeAddressService {
         cancel: CancellationToken,
     ) -> Result<(NodeAddressProvider, Self), Error> {
         let stream = init_stream(yellowstone_url.clone(), yellowstone_token).await?;
-        let filtered_stream =
-            stream.filter_map(|update| async { map_yellowstone_update_to_slot_event(update) });
+        let filtered_stream = slot_events(stream);
 
         let (provider, service) =
             NodeAddressService::run(rpc_client, filtered_stream, config, cancel).await?;
@@ -71,6 +70,21 @@ impl YellowstoneNodeAddressService {
         self.0.shutdown().await?;
         Ok(())
     }
+}
+
+fn slot_events(
+    updates: impl Stream<Item = Result<SubscribeUpdate, Status>>,
+) -> impl Stream<Item = SlotEvent> {
+    stream::unfold(Box::pin(updates), |mut stream| async move {
+        loop {
+            let update = stream.next().await?;
+            match map_yellowstone_update_to_slot_event(update) {
+                YellowstoneUpdate::SlotEvent(slot_event) => return Some((slot_event, stream)),
+                YellowstoneUpdate::Skip => continue,
+                YellowstoneUpdate::End => return None,
+            }
+        }
+    })
 }
 
 async fn init_stream(
@@ -100,37 +114,52 @@ async fn init_stream(
     Ok(stream)
 }
 
+enum YellowstoneUpdate {
+    SlotEvent(SlotEvent),
+    Skip,
+    End,
+}
+
 fn map_yellowstone_update_to_slot_event(
     update: Result<SubscribeUpdate, Status>,
-) -> Option<SlotEvent> {
-    if update.is_err() {
-        error!("Error received from Yellowstone: {:?}", update.err());
-        return None;
-    }
-    match update
-        .unwrap()
-        .update_oneof
-        .expect("Should be valid message")
-    {
+) -> YellowstoneUpdate {
+    let update = match update {
+        Ok(update) => update,
+        Err(err) => {
+            error!("Error received from Yellowstone: {err:?}");
+            return YellowstoneUpdate::End;
+        }
+    };
+
+    let Some(update) = update.update_oneof else {
+        error!("Empty update received from Yellowstone");
+        return YellowstoneUpdate::Skip;
+    };
+
+    match update {
         UpdateOneof::Slot(SubscribeUpdateSlot { slot, status, .. }) => {
-            match SlotStatus::try_from(status).expect("Should be valid status code") {
+            let Ok(status) = SlotStatus::try_from(status) else {
+                error!("Unexpected Yellowstone slot status code: {status}");
+                return YellowstoneUpdate::Skip;
+            };
+            match status {
                 // SlotFirstShredReceived update indicates that we have just received the first shred from
                 // the leader for this slot and they are probably still accepting transactions.
                 // For the cluster with 1 node there are no SlotFirstShredReceived updates, so we
                 // use SlotCreatedBank as a fallback.
                 SlotStatus::SlotFirstShredReceived | SlotStatus::SlotCreatedBank => {
-                    Some(SlotEvent::Start(slot))
+                    YellowstoneUpdate::SlotEvent(SlotEvent::Start(slot))
                 }
 
                 // This update indicates that a full slot was received by the connected
                 // node so we can stop sending transactions to the leader for that slot
-                SlotStatus::SlotCompleted => Some(SlotEvent::End(slot)),
-                _ => None,
+                SlotStatus::SlotCompleted => YellowstoneUpdate::SlotEvent(SlotEvent::End(slot)),
+                _ => YellowstoneUpdate::Skip,
             }
         }
         _ => {
             error!("Unexpected update type received from Yellowstone");
-            None
+            YellowstoneUpdate::Skip
         }
     }
 }
@@ -228,5 +257,38 @@ pub(crate) fn create_client_config(
         x_token: yellowstone_token.map(|token| token.to_string()),
         max_decoding_message_size: 16 * 1024 * 1024,
         timeout: Duration::from_secs(30), // 30 seconds
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn stream_error_terminates_without_polling_again() {
+        let updates = stream::iter([Err(Status::unavailable(String::new()))])
+            .chain(stream::poll_fn(|_| panic!()));
+        let events = slot_events(updates);
+        tokio::pin!(events);
+        assert!(events.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn skipped_update_does_not_end_slot_stream() {
+        let updates = stream::iter([
+            Ok(SubscribeUpdate::default()),
+            Ok(SubscribeUpdate {
+                update_oneof: Some(UpdateOneof::Slot(SubscribeUpdateSlot {
+                    slot: 42,
+                    status: SlotStatus::SlotCreatedBank as i32,
+                    ..SubscribeUpdateSlot::default()
+                })),
+                ..SubscribeUpdate::default()
+            }),
+        ]);
+        let events = slot_events(updates);
+        tokio::pin!(events);
+        assert!(matches!(events.next().await, Some(SlotEvent::Start(42))));
+        assert!(events.next().await.is_none());
     }
 }
