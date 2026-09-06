@@ -1,5 +1,24 @@
 ## Rate latency tool
 
+### Restore Payer Balances
+
+`top-off` restores saved payer accounts to a target balance. Accounts already at
+or above the target are unchanged unless `--balance-excess` is supplied; that
+option returns surplus lamports to the authority. The authority funds deficits
+and pays transaction fees, so it must have funds before running the command.
+
+```shell
+solana-rate-latency-tool -ul --authority funding.json top-off --accounts-file payers.json --balance 1SOL
+solana-rate-latency-tool -ul --authority funding.json top-off --accounts-file payers.json --balance 1SOL --balance-excess
+```
+
+Balances accept SOL (the default unit) or LAMPORTS. The balance is the desired
+total per payer, not an amount added on each run. Keep payers idle during this
+operation and use rent-exempt target balances for accounts you intend to keep.
+Transfers are submitted and confirmed sequentially via RPC. On an RPC error,
+the command stops; earlier transfers may already have completed. Check the
+failed transaction's status before rerunning after an uncertain confirmation.
+
 Tool sends memo transactions avery `--send-interval` ms for the duration `--duration`.
 Each memo has the following info: `transaction_id, generation_timestamp, target_slot`.
 Optionally, tx fee might be specified.
@@ -52,5 +71,4 @@ To build yellostone with agave from master, I use this branch https://github.com
 When running validator, you need to add one additional cla: ` --geyser-plugin-config yellowstone-grpc/yellowstone-grpc-geyser/config.json`.
 The config file contains path to the `libyellowstone_grpc_geyser.so` file, check that it is correct.
 Beside of that, change the option `"replay_stored_slots"` because by default it is 0.
-
 

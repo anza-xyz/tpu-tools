@@ -1,5 +1,24 @@
 ## Overview
 
+### Restore Payer Balances
+
+`top-off` restores saved payer accounts to a target balance. Accounts already at
+or above the target are unchanged unless `--balance-excess` is supplied; that
+option returns surplus lamports to the authority. The authority funds deficits
+and pays transaction fees, so it must have funds before running the command.
+
+```shell
+solana-transaction-bench -ul --authority funding.json top-off --accounts-file payers.json --balance 1SOL
+solana-transaction-bench -ul --authority funding.json top-off --accounts-file payers.json --balance 1SOL --balance-excess
+```
+
+Balances accept SOL (the default unit) or LAMPORTS. The balance is the desired
+total per payer, not an amount added on each run. Keep payers idle during this
+operation and use rent-exempt target balances for accounts you intend to keep.
+Transfers are submitted and confirmed sequentially via RPC. On an RPC error,
+the command stops; earlier transfers may already have completed. Check the
+failed transaction's status before rerunning after an uncertain confirmation.
+
 `solana-transaction-bench` is a load-generation tool for Solana validators and clusters. It
 generates transfer transactions, and sends them over QUIC to current and upcoming TPU leaders.
 
