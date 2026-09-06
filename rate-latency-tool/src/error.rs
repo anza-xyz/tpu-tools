@@ -12,6 +12,8 @@ use {
 #[derive(Debug, Error)]
 pub enum RateLatencyToolError {
     #[error(transparent)]
+    TopOff(#[from] solana_tpu_tools_common::accounts_top_off::Error),
+    #[error(transparent)]
     AccountsCreatorError(#[from] AccountsCreatorError),
 
     #[error(transparent)]

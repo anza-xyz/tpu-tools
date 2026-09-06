@@ -87,6 +87,21 @@ pub struct ReadAccounts {
     pub accounts_file: PathBuf,
 }
 
+/// Restore saved payer balances, optionally returning surplus to the authority.
+#[derive(Args, Debug, PartialEq, Eq, Clone)]
+pub struct TopOff {
+    #[clap(long)]
+    pub accounts_file: PathBuf,
+
+    /// Target balance per payer, in SOL or LAMPORTS.
+    #[clap(long, value_parser = parse_balance)]
+    pub balance: u64,
+
+    /// Transfer balances above the target back to the authority.
+    #[clap(long)]
+    pub reclaim_excess: bool,
+}
+
 /// Parameters for draining payer accounts from a file.
 #[derive(Args, Debug, PartialEq, Eq, Clone)]
 #[clap(rename_all = "kebab-case")]
@@ -148,22 +163,71 @@ pub fn parse_duration_ms(s: &str) -> Result<Duration, &'static str> {
 /// Parses strings like "1SOL", "0.5SOL", "1000000000LAMPORTS" into lamports.
 fn parse_balance(s: &str) -> Result<u64, String> {
     let s = s.trim().to_uppercase();
-
-    if let Some(sol_value) = s.strip_suffix("SOL") {
-        let sol: f64 = sol_value.parse::<f64>().map_err(|e| e.to_string())?;
-        Ok((sol * LAMPORTS_PER_SOL as f64) as u64)
-    } else if let Some(lamports_str) = s.strip_suffix("LAMPORTS") {
-        lamports_str.parse::<u64>().map_err(|e| e.to_string())
-    } else {
-        // Default to SOL if no suffix
-        let sol: f64 = s.parse::<f64>().map_err(|e| e.to_string())?;
-        Ok((sol * LAMPORTS_PER_SOL as f64) as u64)
+    if let Some(lamports) = s.strip_suffix("LAMPORTS") {
+        return lamports.parse::<u64>().map_err(|err| err.to_string());
     }
+    let sol = s.strip_suffix("SOL").unwrap_or(&s);
+    let (whole, fraction) = sol.split_once('.').unwrap_or((sol, ""));
+    if whole.is_empty()
+        || !whole.bytes().all(|digit| digit.is_ascii_digit())
+        || !fraction.bytes().all(|digit| digit.is_ascii_digit())
+        || fraction.len() > 9
+    {
+        return Err("Expected nonnegative SOL with at most 9 decimal places, or LAMPORTS".into());
+    }
+    let whole = whole.parse::<u64>().map_err(|err| err.to_string())?;
+    let fraction = format!("{fraction:0<9}")
+        .parse::<u64>()
+        .map_err(|err| err.to_string())?;
+    whole
+        .checked_mul(LAMPORTS_PER_SOL)
+        .and_then(|amount| amount.checked_add(fraction))
+        .ok_or_else(|| "Balance exceeds u64 lamports".into())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn top_off_balance_is_exact_and_validated() {
+        assert_eq!(parse_balance("1.000000001SOL").unwrap(), 1_000_000_001);
+        assert_eq!(
+            parse_balance("18446744073709551615LAMPORTS").unwrap(),
+            u64::MAX
+        );
+        for invalid in [
+            "-1SOL",
+            "NaNSOL",
+            "inf",
+            "18446744074SOL",
+            "0.0000000001SOL",
+        ] {
+            assert!(parse_balance(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn top_off_cli_options() {
+        #[derive(clap::Parser)]
+        struct TestCli {
+            #[clap(flatten)]
+            options: TopOff,
+        }
+        use clap::Parser;
+        let parsed = TestCli::try_parse_from([
+            "test",
+            "--accounts-file",
+            "payers.json",
+            "--balance",
+            "2SOL",
+            "--reclaim-excess",
+        ])
+        .unwrap();
+        assert_eq!(parsed.options.balance, 2_000_000_000);
+        assert!(parsed.options.reclaim_excess);
+        assert!(TestCli::try_parse_from(["test", "--accounts-file", "payers.json"]).is_err());
+    }
 
     #[test]
     fn test_parse_recipient_from_pubkey() {
@@ -198,7 +262,6 @@ mod tests {
         // 0.000000001 SOL == 1 lamport
         assert_eq!(parse_balance("0.000000001SOL").unwrap(), 1);
 
-        // Tiny fractions under one lamport get truncated down
-        assert_eq!(parse_balance("0.0000000009SOL").unwrap(), 0);
+        assert!(parse_balance("0.0000000009SOL").is_err());
     }
 }
