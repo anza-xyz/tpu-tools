@@ -76,6 +76,21 @@ async fn run(parameters: ClientCliParameters) -> Result<(), BenchClientError> {
     });
 
     match parameters.command {
+        Command::TopOff(options) => {
+            if !authority_provided {
+                return Err(BenchClientError::InvalidCliArguments(
+                    "top-off requires --authority to fund accounts and pay fees".to_string(),
+                ));
+            }
+            solana_tpu_tools_common::accounts_top_off::top_off_accounts(
+                &rpc_client,
+                &authority,
+                options.accounts_file,
+                options.balance,
+                options.balance_excess,
+            )
+            .await?;
+        }
         Command::Run {
             transaction_params,
             account_params,
@@ -204,7 +219,7 @@ fn validate_mock_rpc_usage(parameters: &ClientCliParameters) -> Result<(), Bench
 
     if matches!(
         &parameters.command,
-        Command::WriteAccounts(_) | Command::DeleteAccounts(_)
+        Command::WriteAccounts(_) | Command::DeleteAccounts(_) | Command::TopOff(_)
     ) {
         return Err(BenchClientError::InvalidCliArguments(
             "--mock-rpc does not support account file mutation commands".to_string(),

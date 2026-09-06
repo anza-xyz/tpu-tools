@@ -38,6 +38,7 @@ fn main() {
 
 #[tokio::main]
 async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError> {
+    let authority_provided = parameters.authority.is_some();
     let authority = if let Some(authority_file) = parameters.authority {
         Keypair::read_from_file(authority_file)
             .map_err(|_err| RateLatencyToolError::KeypairReadFailure)?
@@ -57,6 +58,21 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
     let cancel = CancellationToken::new();
 
     match parameters.command {
+        Command::TopOff(options) => {
+            if !authority_provided {
+                return Err(RateLatencyToolError::InvalidCliArguments(
+                    "top-off requires --authority to fund accounts and pay fees".to_string(),
+                ));
+            }
+            solana_tpu_tools_common::accounts_top_off::top_off_accounts(
+                &rpc_client,
+                &authority,
+                options.accounts_file,
+                options.balance,
+                options.balance_excess,
+            )
+            .await?;
+        }
         Command::Run {
             account_params,
             execution_params,

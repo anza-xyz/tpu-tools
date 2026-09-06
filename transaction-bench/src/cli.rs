@@ -94,6 +94,8 @@ pub struct ClientCliParameters {
 
 #[derive(Subcommand, Debug, PartialEq, Eq)]
 pub enum Command {
+    /// Restore saved payer balances, optionally collecting surplus funds.
+    TopOff(solana_tpu_tools_common::cli::TopOff),
     #[clap(about = "Create accounts without saving them and run")]
     Run {
         #[clap(flatten)]
