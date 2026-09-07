@@ -39,6 +39,7 @@ solana-rpc-client-api = { workspace = true }
 solana-sdk-ids = { workspace = true }
 solana-signer = { workspace = true }
 solana-system-interface = { workspace = true }
+solana-time-utils = { workspace = true }
 solana-tpu-client-next = { workspace = true, features = [
     "agave-unstable-api",
     "metrics",

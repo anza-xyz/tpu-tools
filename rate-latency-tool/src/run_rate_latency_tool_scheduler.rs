@@ -4,9 +4,12 @@ use {
     log::{debug, warn},
     solana_clock::Slot,
     solana_measure::measure::Measure,
+    solana_time_utils::timestamp,
     solana_tpu_client_next::{
         ConnectionWorkersSchedulerError, SendTransactionStats, WireTransaction,
-        connection_workers_scheduler::{ConnectionWorkersSchedulerConfig, setup_endpoint},
+        connection_workers_scheduler::{
+            ConnectionWorkersSchedulerConfig, setup_endpoint, should_skip_current_leader,
+        },
         workers_cache::{WorkersCache, WorkersCacheError, shutdown_worker},
     },
     solana_tpu_tools_common::leader_updater::LeaderUpdaterWithSlot,
@@ -53,16 +56,13 @@ where
     let main_loop = async {
         loop {
             ticker.tick().await;
-            let current_slot = leader_updater.get_current_slot();
-
             next_leaders.clear();
-            leader_updater.next_leaders(leaders_fanout.connect, &mut next_leaders);
+            let slot_estimate =
+                leader_updater.next_leaders(leaders_fanout.connect, &mut next_leaders);
+            let current_slot = slot_estimate
+                .map(|estimate| estimate.slot)
+                .unwrap_or_else(|| leader_updater.get_current_slot());
             select_unique_leaders(&next_leaders, leaders_fanout.connect, &mut connect_leaders);
-            select_unique_leaders(&next_leaders, leaders_fanout.send, &mut send_leaders);
-            debug!(
-                "Connect leaders: {connect_leaders:?}, send leaders: {send_leaders:?} for slot \
-                 {current_slot}, leader_fanout: {leaders_fanout:?}."
-            );
 
             // add future leaders to the cache to hide the latency of opening
             // the connection.
@@ -78,6 +78,23 @@ where
                     shutdown_worker(evicted_worker);
                 }
             }
+
+            let rtt_ms = next_leaders.first().and_then(|peer| workers.rtt_ms(peer));
+            let leader_window_end_ms =
+                slot_estimate.and_then(|estimate| estimate.leader_window_end_ms);
+            let skip_current = select_send_leaders(
+                &next_leaders,
+                leaders_fanout.send,
+                leader_window_end_ms,
+                rtt_ms,
+                timestamp(),
+                &mut send_leaders,
+            );
+            debug!(
+                "Connect leaders: {connect_leaders:?}, send leaders: {send_leaders:?} for slot \
+                 {current_slot}, leader_fanout: {leaders_fanout:?}, skip_current: {skip_current}, \
+                 rtt_ms: {rtt_ms:?}, leader_window_end_ms: {leader_window_end_ms:?}."
+            );
 
             // the time to generate and send the transaction < 70us, the
             // assumtion here is that the ticker interval >> this value  and
@@ -164,4 +181,54 @@ fn select_unique_leaders(
 ) {
     selected_leaders.clear();
     selected_leaders.extend(leaders.iter().take(max_leaders).copied().unique());
+}
+
+/// Uses the same arrival-time policy as Agave's transaction scheduler.
+fn select_send_leaders(
+    leaders: &[SocketAddr],
+    max_leaders: usize,
+    leader_window_end_ms: Option<u64>,
+    rtt_ms: Option<u64>,
+    now_ms: u64,
+    selected_leaders: &mut Vec<SocketAddr>,
+) -> bool {
+    let skip_current = leaders.len() > 1
+        && should_skip_current_leader(leader_window_end_ms, rtt_ms, now_ms);
+    let candidates = if skip_current { &leaders[1..] } else { leaders };
+    select_unique_leaders(candidates, max_leaders, selected_leaders);
+    skip_current
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_send_leader_selection() {
+        let a = SocketAddr::from(([127, 0, 0, 1], 8001));
+        let b = SocketAddr::from(([127, 0, 0, 1], 8002));
+        let c = SocketAddr::from(([127, 0, 0, 1], 8003));
+        // With RTT 21 ms, estimated delivery takes ceil(21 / 2) + 50 = 61 ms.
+        for (name, leaders, fanout, end_ms, rtt_ms, expected, skipped) in [
+            ("before cutoff", vec![a, b, c], 2, Some(1062), Some(21), vec![a, b], false),
+            ("at cutoff", vec![a, b, c], 2, Some(1061), Some(21), vec![b, c], true),
+            ("expired without RTT", vec![a, b], 1, Some(999), None, vec![b], true),
+            ("unknown RTT", vec![a, b], 1, Some(1001), None, vec![a], false),
+            ("unknown timing", vec![a, b], 1, None, Some(21), vec![a], false),
+            ("pinned", vec![a], 1, None, None, vec![a], false),
+            ("no alternative", vec![a], 1, Some(999), Some(21), vec![a], false),
+            ("no candidates", vec![], 1, Some(999), Some(21), vec![], false),
+            ("repeated leader windows", vec![a, a, b], 2, Some(1061), Some(21), vec![a, b], true),
+            ("deduplicate within fanout", vec![a, a, b], 2, None, None, vec![a], false),
+            ("zero fanout", vec![a, b], 0, None, None, vec![], false),
+        ] {
+            let mut selected = vec![c];
+            assert_eq!(
+                select_send_leaders(&leaders, fanout, end_ms, rtt_ms, 1000, &mut selected),
+                skipped,
+                "{name}",
+            );
+            assert_eq!(selected, expected, "{name}");
+        }
+    }
 }

@@ -21,7 +21,7 @@ manual_let_else = "deny"
 used_underscore_binding = "deny"
 
 [workspace.dependencies]
-agave-logger = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
+agave-logger = { path = "../solana_2/logger", features = ["agave-unstable-api"] }
 async-std = "1.12.0"
 async-stream = "0.3.6"
 async-trait = "0.1.91"
@@ -40,43 +40,43 @@ log = "0.4.33"
 rand = "0.9.4"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-solana-clap-v3-utils = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
-solana-cli-config = { version = "=4.4.0-alpha.2" }
+solana-clap-v3-utils = { path = "../solana_2/clap-v3-utils", features = ["agave-unstable-api"] }
+solana-cli-config = { path = "../solana_2/cli-config" }
 solana-clock = "3.2"
 solana-commitment-config = "=3.1.1"
 solana-compute-budget-interface = "=3.1.0"
 solana-config-interface = "=2.0.0"
 solana-epoch-info = "=3.1.0"
 solana-epoch-schedule = "=3.3.0"
-solana-faucet = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
+solana-faucet = { path = "../solana_2/faucet", features = ["agave-unstable-api"] }
 solana-fee-calculator = "=3.3.0"
 solana-hash = "4.6.0"
 solana-instruction = "=3.5.0"
 solana-keypair = "=3.1.2"
-solana-leader-schedule = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
-solana-measure = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
+solana-leader-schedule = { path = "../solana_2/leader-schedule", features = ["agave-unstable-api"] }
+solana-measure = { path = "../solana_2/measure", features = ["agave-unstable-api"] }
 solana-message = "=4.5.0"
-solana-metrics = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
+solana-metrics = { path = "../solana_2/metrics", features = ["agave-unstable-api"] }
 solana-native-token = "=3.0.0"
-solana-net-utils = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
+solana-net-utils = { path = "../solana_2/net-utils", features = ["agave-unstable-api"] }
 solana-pubkey = { version = "=4.3.0", default-features = false }
-solana-pubsub-client = { version = "=4.4.0-alpha.2" }
+solana-pubsub-client = { path = "../solana_2/pubsub-client" }
 solana-rent = "=4.4.0"
-solana-rpc = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
-solana-rpc-client = { version = "=4.4.0-alpha.2", default-features = false }
-solana-rpc-client-api = { version = "=4.4.0-alpha.2" }
+solana-rpc = { path = "../solana_2/rpc", features = ["agave-unstable-api"] }
+solana-rpc-client = { path = "../solana_2/rpc-client", default-features = false }
+solana-rpc-client-api = { path = "../solana_2/rpc-client-api" }
 solana-sdk-ids = "=3.1.0"
 solana-sha256-hasher = "=3.1.0"
 solana-signature = { version = "3.5.1", default-features = false }
 solana-signer = "=3.0.1"
-solana-streamer = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
+solana-streamer = { path = "../solana_2/streamer", features = ["agave-unstable-api"] }
 solana-system-interface = { version = "3.3.0", features = ["alloc", "wincode"] }
-solana-test-validator = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
+solana-test-validator = { path = "../solana_2/test-validator", features = ["agave-unstable-api"] }
 solana-time-utils = "=3.0.0"
-solana-tpu-client-next = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
+solana-tpu-client-next = { path = "../solana_2/tpu-client-next", features = ["agave-unstable-api"] }
 solana-tpu-tools-common = { path = "tpu-tools-common", version = "0.1.0" }
 solana-transaction = "4.2.0"
-solana-transaction-status = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
+solana-transaction-status = { path = "../solana_2/transaction-status", features = ["agave-unstable-api"] }
 spl-memo-interface = "=2.1.0"
 thiserror = "2.0.19"
 tokio = "1.53.1"

@@ -69,6 +69,7 @@ solana-pubsub-client = { workspace = true }
 solana-rpc = { workspace = true }
 solana-streamer = { workspace = true, features = ["dev-context-only-utils"] }
 solana-test-validator = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

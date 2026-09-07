@@ -103,6 +103,7 @@ async fn init_stream(
 fn map_yellowstone_update_to_slot_event(
     update: Result<SubscribeUpdate, Status>,
 ) -> Option<SlotEvent> {
+    let timestamp = solana_time_utils::timestamp();
     if update.is_err() {
         error!("Error received from Yellowstone: {:?}", update.err());
         return None;
@@ -119,12 +120,12 @@ fn map_yellowstone_update_to_slot_event(
                 // For the cluster with 1 node there are no SlotFirstShredReceived updates, so we
                 // use SlotCreatedBank as a fallback.
                 SlotStatus::SlotFirstShredReceived | SlotStatus::SlotCreatedBank => {
-                    Some(SlotEvent::Start(slot))
+                    Some(SlotEvent::Start { slot, timestamp })
                 }
 
                 // This update indicates that a full slot was received by the connected
                 // node so we can stop sending transactions to the leader for that slot
-                SlotStatus::SlotCompleted => Some(SlotEvent::End(slot)),
+                SlotStatus::SlotCompleted => Some(SlotEvent::End { slot, timestamp }),
                 _ => None,
             }
         }

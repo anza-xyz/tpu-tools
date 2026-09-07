@@ -58,13 +58,14 @@ fn udp_slot_event_stream(socket: UdpSocket) -> impl Stream<Item = SlotEvent> + S
         loop {
             match socket.recv_from(&mut buf).await {
                 Ok((len, from)) => {
+                    let timestamp = solana_time_utils::timestamp();
                     let data = &buf[..len];
                     match serde_json::from_slice::<SlotMessage>(data) {
                         Ok(msg) => {
                             trace!("Received SlotMessage from {from}: {msg:?}");
                             match msg.status {
-                                SlotStatus::FirstShredReceived => yield SlotEvent::Start(msg.slot),
-                                SlotStatus::Completed => yield SlotEvent::End(msg.slot),
+                                SlotStatus::FirstShredReceived => yield SlotEvent::Start { slot: msg.slot, timestamp },
+                                SlotStatus::Completed => yield SlotEvent::End { slot: msg.slot, timestamp },
                                 _ => continue,
                             };
                         }

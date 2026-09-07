@@ -19,7 +19,7 @@ use {
     solana_clock::Slot,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_tpu_client_next::{
-        leader_updater::LeaderUpdater,
+        leader_updater::{LeaderUpdater, SlotEstimate},
         node_address_service::{LeaderTpuCacheServiceConfig, NodeAddressProvider},
         websocket_node_address_service::{
             Error as WebsocketNodeAddressServiceError, WebsocketNodeAddressService,
@@ -184,8 +184,13 @@ struct PinnedLeaderUpdater {
 }
 
 impl LeaderUpdater for PinnedLeaderUpdater {
-    fn next_leaders(&mut self, _lookahead_leaders: usize, leaders: &mut Vec<SocketAddr>) {
+    fn next_leaders(
+        &mut self,
+        _lookahead_leaders: usize,
+        leaders: &mut Vec<SocketAddr>,
+    ) -> Option<SlotEstimate> {
         leaders.extend_from_slice(&self.addresses);
+        None
     }
 }
 
@@ -197,6 +202,6 @@ impl LeaderSlotEstimator for PinnedLeaderUpdater {
 
 impl LeaderSlotEstimator for NodeAddressProvider {
     fn get_current_slot(&mut self) -> Slot {
-        self.estimated_current_slot()
+        self.estimated_current_slot().slot
     }
 }

@@ -19,11 +19,13 @@ use {
         task::JoinSet,
         time::{Duration, Instant},
     },
+    tokio_util::sync::CancellationToken,
 };
 
 const COMPUTE_BUDGET_INSTRUCTION_CU_COST: u32 = 150;
 const SIMPLE_TRANSFER_INSTRUCTION_CU_COST: u32 = 150;
 const PADDED_TRANSFER_INSTRUCTION_CU_COST: u32 = 3_000;
+const SEND_BATCH_SAFETY_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Error, Debug)]
 pub enum TransactionGeneratorError {
@@ -47,6 +49,7 @@ pub struct TransactionGenerator {
     target_tps: Option<u64>,
     generate_tx_batch_size: usize,
     workers_pull_size: usize,
+    cancel: CancellationToken,
 }
 
 impl TransactionGenerator {
@@ -64,6 +67,7 @@ impl TransactionGenerator {
         target_tps: Option<u64>,
         generate_tx_batch_size: usize,
         workers_pull_size: usize,
+        cancel: CancellationToken,
     ) -> Self {
         Self {
             accounts,
@@ -78,6 +82,7 @@ impl TransactionGenerator {
             target_tps,
             generate_tx_batch_size,
             workers_pull_size,
+            cancel,
         }
     }
 
@@ -120,6 +125,7 @@ impl TransactionGenerator {
         let start = Instant::now();
         let mut next_batch_at = self.target_tps.map(|_| start);
         let mut txs_scheduled: u64 = 0;
+        let run_deadline = self.run_duration.map(|duration| start + duration);
         loop {
             if let Some(stop_reason) = stop_reason(
                 self.run_duration,
@@ -128,6 +134,7 @@ impl TransactionGenerator {
                 txs_scheduled,
             ) {
                 info!("Transaction generator is stopping: {stop_reason}.");
+                self.cancel.cancel();
                 while let Some(result) = futures.join_next().await {
                     debug!("Future result {result:?}");
                 }
@@ -174,6 +181,7 @@ impl TransactionGenerator {
                             &mut lamports_index,
                             total_pairs,
                         );
+                        let cancel = self.cancel.clone();
                         futures.spawn(async move {
                             let Ok(wired_tx_batch) = generate_transfer_transaction_batch(
                                 payers,
@@ -192,7 +200,20 @@ impl TransactionGenerator {
                                 return;
                             };
 
-                            send_batch(wired_tx_batch, transactions_sender).await;
+                            let send_batch_timeout = run_deadline
+                                .map(|deadline| deadline.saturating_duration_since(Instant::now()))
+                                .unwrap_or(SEND_BATCH_SAFETY_TIMEOUT);
+                            tokio::select! {
+                                _ = send_batch(wired_tx_batch, transactions_sender) => {}
+                                _ = cancel.cancelled()  => {}
+                                _ = tokio::time::sleep(send_batch_timeout) => {
+                                    warn!(
+                                        "Timed out sending generated txs to the channel after \
+                                         {send_batch_timeout:?}. Probably, something is off with \
+                                         connections and client cannot make progress."
+                                    );
+                                }
+                            }
                         });
 
                         let receivers_consumed =
