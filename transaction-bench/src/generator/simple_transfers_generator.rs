@@ -25,6 +25,8 @@ pub(crate) fn generate_transfer_transaction_batch(
         simple_transfer_tx_params,
         padding_params,
         use_txv1,
+        // Duplicates are copies of already generated transactions, handled by the caller.
+        duplicate_fraction: _,
     }: TransactionParams,
     compute_unit_price: Option<u64>,
     priority_fee_mode: PriorityFeeMode,
@@ -37,6 +39,7 @@ pub(crate) fn generate_transfer_transaction_batch(
             simple_transfer_tx_params: simple_transfer_tx_params.clone(),
             padding_params: padding_params.clone(),
             use_txv1,
+            duplicate_fraction: 0.0,
         }
         .instruction_padding_config();
 

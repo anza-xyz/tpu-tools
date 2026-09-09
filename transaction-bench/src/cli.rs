@@ -40,7 +40,7 @@ fn parse_endpoint_config(config: &str) -> Result<EndpointConfig, String> {
     })
 }
 
-#[derive(Parser, Debug, PartialEq, Eq)]
+#[derive(Parser, Debug, PartialEq)]
 #[clap(name = crate_name!(),
     version = crate_version!(),
     about = crate_description!(),
@@ -92,7 +92,7 @@ pub struct ClientCliParameters {
     pub command: Command,
 }
 
-#[derive(Subcommand, Debug, PartialEq, Eq)]
+#[derive(Subcommand, Debug, PartialEq)]
 pub enum Command {
     #[clap(about = "Create accounts without saving them and run")]
     Run {
@@ -241,7 +241,7 @@ pub struct EndpointConfig {
     pub staked_identity_file: Option<PathBuf>,
 }
 
-#[derive(Args, Clone, Debug, PartialEq, Eq)]
+#[derive(Args, Clone, Debug, PartialEq)]
 #[clap(rename_all = "kebab-case")]
 pub struct TransactionParams {
     #[clap(flatten)]
@@ -252,6 +252,18 @@ pub struct TransactionParams {
 
     #[clap(long, help = "Generate and send transfer transactions in V1 format.")]
     pub use_txv1: bool,
+
+    #[clap(
+        long,
+        default_value_t = 0.0,
+        value_parser = parse_duplicate_fraction,
+        help = "Fraction of sent transactions that are byte-identical copies of an already sent \
+                transaction, in [0.0, 1.0).\n0.0 (default) sends only unique transactions. 0.5 \
+                sends every transaction twice, 0.667 three times.\nDuplicates are cheap to \
+                produce, so the send rate (--target-tps) counts them and only the unique remainder \
+                is signed."
+    )]
+    pub duplicate_fraction: f64,
     //TODO(klykov): memo
 }
 
@@ -353,6 +365,19 @@ pub struct SimpleTransferTxParams {
 }
 
 const DEFAULT_MAX_LAMPORTS_TO_TRANSFER: u64 = 65_536;
+
+fn parse_duplicate_fraction(s: &str) -> Result<f64, String> {
+    let fraction = s
+        .parse::<f64>()
+        .map_err(|err| format!("failed to parse duplicate fraction: {err}"))?;
+    if !(0.0..1.0).contains(&fraction) {
+        return Err(format!(
+            "--duplicate-fraction must be in [0.0, 1.0), got {fraction}; 1.0 would require an \
+             infinite number of copies per unique transaction"
+        ));
+    }
+    Ok(fraction)
+}
 
 fn parse_duration(s: &str) -> Result<Duration, &'static str> {
     s.parse::<u64>()
@@ -511,6 +536,7 @@ mod tests {
                         instruction_padding_program_id: None,
                     },
                     use_txv1: false,
+                    duplicate_fraction: 0.0,
                 },
                 account_params,
                 execution_params,
@@ -566,6 +592,7 @@ mod tests {
                         instruction_padding_program_id: None,
                     },
                     use_txv1: false,
+                    duplicate_fraction: 0.0,
                 },
                 execution_params,
             },
@@ -595,6 +622,7 @@ mod tests {
                 instruction_padding_program_id: None,
             },
             use_txv1: false,
+            duplicate_fraction: 0.0,
         };
 
         let padding_config = params.instruction_padding_config().unwrap();

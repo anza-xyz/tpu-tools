@@ -135,6 +135,7 @@ fn test_transactions_sending() {
                     instruction_padding_program_id: None,
                 },
                 use_txv1: false,
+                duplicate_fraction: 0.0,
             },
             ExecutionParams {
                 endpoint_configs: vec![EndpointConfig {

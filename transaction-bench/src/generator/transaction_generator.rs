@@ -52,6 +52,24 @@ pub struct TransactionGenerator {
     cancel: CancellationToken,
 }
 
+/// Splits a batch of `emit_batch_size` transactions to send into the number of
+/// distinct transactions to generate and the number of byte-identical copies of
+/// them to append, so that `duplicate_fraction` of the sent transactions are
+/// copies.
+#[allow(clippy::arithmetic_side_effects)]
+pub(crate) fn split_unique_and_duplicates(
+    emit_batch_size: usize,
+    duplicate_fraction: f64,
+) -> (usize, usize) {
+    if emit_batch_size == 0 {
+        return (0, 0);
+    }
+    let num_unique = (emit_batch_size as f64 * (1.0 - duplicate_fraction)).round() as usize;
+    // At least one distinct transaction is needed for the copies to duplicate.
+    let num_unique = num_unique.clamp(1, emit_batch_size);
+    (num_unique, emit_batch_size - num_unique)
+}
+
 impl TransactionGenerator {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -150,14 +168,20 @@ impl TransactionGenerator {
                 if let Some(next_batch_deadline) = next_batch_at {
                     tokio::time::sleep_until(next_batch_deadline).await;
                 }
-                let Some(send_batch_size) = next_batch_size(
+                let Some(emit_batch_size) = next_batch_size(
                     self.num_transactions,
                     self.generate_tx_batch_size,
                     txs_scheduled,
                 ) else {
                     break;
                 };
-                txs_scheduled = txs_scheduled.saturating_add(send_batch_size as u64);
+                txs_scheduled = txs_scheduled.saturating_add(emit_batch_size as u64);
+                // Only the unique part of the batch is generated and signed; the
+                // duplicates are refcount bumps of the wire bytes.
+                let (send_batch_size, num_duplicates) = split_unique_and_duplicates(
+                    emit_batch_size,
+                    self.transaction_params.duplicate_fraction,
+                );
                 let transaction_params = self.transaction_params.clone();
                 let compute_unit_price = self.compute_unit_price;
                 let priority_fee_mode = self.priority_fee_mode.clone();
@@ -204,7 +228,7 @@ impl TransactionGenerator {
                                 .map(|deadline| deadline.saturating_duration_since(Instant::now()))
                                 .unwrap_or(SEND_BATCH_SAFETY_TIMEOUT);
                             tokio::select! {
-                                _ = send_batch(wired_tx_batch, transactions_sender) => {}
+                                _ = send_batch(wired_tx_batch, num_duplicates, transactions_sender) => {}
                                 _ = cancel.cancelled()  => {}
                                 _ = tokio::time::sleep(send_batch_timeout) => {
                                     info!(
@@ -226,7 +250,7 @@ impl TransactionGenerator {
                 }
 
                 if let Some(target_tps) = self.target_tps {
-                    let batch_interval = compute_batch_interval(send_batch_size, target_tps);
+                    let batch_interval = compute_batch_interval(emit_batch_size, target_tps);
                     next_batch_at = Some(
                         next_batch_at
                             .map(|next_batch_deadline| next_batch_deadline + batch_interval)
@@ -278,12 +302,34 @@ pub(crate) enum TransactionType {
     //TODO(klykov): add memo
 }
 
+/// Sends the batch into the channel, appending `num_duplicates` byte-identical
+/// copies spread evenly over the batch, so that each unique transaction is
+/// followed by its own copies.
+#[allow(clippy::arithmetic_side_effects)]
 async fn send_batch(
     wired_txs_batch: Vec<WireTransaction>,
+    num_duplicates: usize,
     transactions_sender: Sender<WireTransaction>,
 ) {
+    let num_unique = wired_txs_batch.len();
+    if num_unique == 0 {
+        return;
+    }
     let mut measure_send_to_queue = Measure::start("add transaction batch to channel");
-    for wired_tx in wired_txs_batch {
+    let mut duplicates_sent = 0;
+    for (index, wired_tx) in wired_txs_batch.into_iter().enumerate() {
+        // Spread the copies over the unique transactions so that the duplicate
+        // rate is uniform within the batch instead of clumped at its start.
+        let duplicates_target = (index + 1) * num_duplicates / num_unique;
+        let num_copies = 1 + duplicates_target - duplicates_sent;
+        duplicates_sent = duplicates_target;
+
+        for _ in 1..num_copies {
+            if let Err(err) = transactions_sender.send(wired_tx.clone()).await {
+                error!("Receiver dropped, error {err}.");
+                return;
+            }
+        }
         if let Err(err) = transactions_sender.send(wired_tx).await {
             error!("Receiver dropped, error {err}.");
             return;
@@ -461,6 +507,7 @@ mod tests {
                 instruction_padding_program_id: None,
             },
             use_txv1,
+            duplicate_fraction: 0.0,
         }
     }
 }

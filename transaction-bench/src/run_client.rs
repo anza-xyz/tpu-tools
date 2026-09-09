@@ -3,7 +3,10 @@ use {
         backpressured_broadcaster::BackpressuredBroadcaster,
         cli::{EndpointConfig, PriorityFeeParams, TransactionParams},
         error::BenchClientError,
-        generator::{TransactionGenerator, transaction_generator::check_num_conflict_groups},
+        generator::{
+            TransactionGenerator,
+            transaction_generator::{check_num_conflict_groups, split_unique_and_duplicates},
+        },
         priority_fee::{PriorityFeeMode, PriorityFeeStats},
     },
     log::*,
@@ -97,12 +100,26 @@ pub async fn run_client(
         info!("Using {workers_pull_size} generator workers for target {target_tps} tx/s.");
     }
 
+    // Only the unique part of a batch can ever land: it alone draws lamports from the pool and requires
+    // distinct destination accounts.
+    let (unique_tx_batch_size, _num_duplicates) = split_unique_and_duplicates(
+        generate_tx_batch_size,
+        transaction_params.duplicate_fraction,
+    );
+    if transaction_params.duplicate_fraction > 0.0 {
+        info!(
+            "Sending {:.1}% duplicates: {unique_tx_batch_size} of every {generate_tx_batch_size} \
+             sent transactions are generated, the rest are copies.",
+            transaction_params.duplicate_fraction * 100.0
+        );
+    }
+
     {
         let transfer_instructions_per_tx = transaction_params
             .simple_transfer_tx_params
             .num_send_instructions_per_tx;
         let transfer_instructions_per_batch =
-            transfer_instructions_per_tx.saturating_mul(generate_tx_batch_size);
+            transfer_instructions_per_tx.saturating_mul(unique_tx_batch_size);
         let max_lamports_to_transfer = usize::try_from(
             transaction_params
                 .simple_transfer_tx_params
@@ -112,13 +129,14 @@ pub async fn run_client(
         if transfer_instructions_per_batch > max_lamports_to_transfer {
             return Err(BenchClientError::InvalidCliArguments(format!(
                 "--max-lamports-to-transfer ({}) must be >= transfer instructions per generated \
-                 batch ({}) computed as num-send-instructions-per-tx ({}) * tx-batch-size ({})",
+                 batch ({}) computed as num-send-instructions-per-tx ({}) * unique transactions \
+                 per batch ({})",
                 transaction_params
                     .simple_transfer_tx_params
                     .max_lamports_to_transfer,
                 transfer_instructions_per_batch,
                 transfer_instructions_per_tx,
-                generate_tx_batch_size
+                unique_tx_batch_size
             )));
         }
     }
@@ -130,7 +148,7 @@ pub async fn run_client(
         transaction_params
             .simple_transfer_tx_params
             .num_send_instructions_per_tx,
-        generate_tx_batch_size,
+        unique_tx_batch_size,
     )?;
 
     if let Some(instruction_padding_config) = transaction_params.instruction_padding_config() {

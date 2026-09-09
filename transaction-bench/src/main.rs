@@ -427,6 +427,7 @@ mod tests {
                         instruction_padding_program_id: None,
                     },
                     use_txv1: false,
+                    duplicate_fraction: 0.0,
                 },
             },
         }
