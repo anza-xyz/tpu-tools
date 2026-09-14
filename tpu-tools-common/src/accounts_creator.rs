@@ -65,25 +65,25 @@ pub struct AccountsCreator {
     rpc_client: Arc<RpcClient>,
     authority: Keypair,
     num_payers: usize,
-    payer_account_balance_lamports: u64,
+    initial_account_balance_lamports: u64,
 }
 
 impl AccountsCreator {
     /// Creates a new account creator.
     ///
-    /// `payer_account_balance_lamports` is the target balance for each created
+    /// `initial_account_balance_lamports` is the target balance for each created
     /// payer account.
     pub fn new(
         rpc_client: Arc<RpcClient>,
         authority: Keypair,
         num_payers: usize,
-        payer_account_balance_lamports: u64,
+        initial_account_balance_lamports: u64,
     ) -> Self {
         Self {
             rpc_client,
             authority,
             num_payers,
-            payer_account_balance_lamports,
+            initial_account_balance_lamports,
         }
     }
 
@@ -119,7 +119,7 @@ impl AccountsCreator {
 
         // Compute the minimum budget for payers
         let min_balance_to_create_account =
-            self.request_funding_tx_fee().await? + self.payer_account_balance_lamports;
+            self.request_funding_tx_fee().await? + self.initial_account_balance_lamports;
         let required_balance = self.num_payers as u64 * min_balance_to_create_account;
         let actual_balance = rpc_client.get_balance(&authority_pubkey).await?;
         info!("Authority balance {actual_balance}, min required balance {required_balance}");
@@ -156,7 +156,7 @@ impl AccountsCreator {
         let instructions = vec![system_instruction::transfer(
             &payer_pubkey,
             &Pubkey::new_unique(),
-            self.payer_account_balance_lamports,
+            self.initial_account_balance_lamports,
         )];
 
         let blockhash = self.rpc_client.get_latest_blockhash().await?;
@@ -171,7 +171,7 @@ impl AccountsCreator {
             &self.rpc_client,
             &[self.authority.insecure_clone()],
             self.num_payers,
-            self.payer_account_balance_lamports,
+            self.initial_account_balance_lamports,
             MAX_CONTINUOUS_FAILED_ATTEMPTS,
         )
         .await
