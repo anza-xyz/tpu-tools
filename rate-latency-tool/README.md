@@ -10,12 +10,14 @@ and pays transaction fees, so it must have funds before running the command.
 ```shell
 solana-rate-latency-tool -ul --authority funding.json top-off --accounts-file payers.json --balance 1SOL
 solana-rate-latency-tool -ul --authority funding.json top-off --accounts-file payers.json --balance 1SOL --reclaim-excess
+solana-rate-latency-tool -ul --authority funding.json top-off-tpu --accounts-file payers.json --balance 1SOL --num-max-open-connections 8 --send-fanout 1 ws-leader-tracker
 ```
 
 Balances accept SOL (the default unit) or LAMPORTS. The balance is the desired
 total per payer, not an amount added on each run. Keep payers idle during this
 operation and use rent-exempt target balances for accounts you intend to keep.
-Transfers are submitted and confirmed sequentially via RPC. On an RPC error,
+Use `top-off-tpu` to submit transfers through TPU and confirm them through RPC.
+The regular `top-off` command submits and confirms sequentially via RPC. On an RPC error,
 the command stops; earlier transfers may already have completed. Check the
 failed transaction's status before rerunning after an uncertain confirmation.
 

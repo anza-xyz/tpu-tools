@@ -4,17 +4,21 @@ use {
     solana_cli_config::ConfigInput,
     solana_keypair::Keypair,
     solana_rate_latency_tool::{
-        cli::{ClientCliParameters, Command, build_cli_parameters},
+        cli::{ClientCliParameters, Command, TpuTopOffExecutionParams, build_cli_parameters},
         error::RateLatencyToolError,
         run_client::run_client,
     },
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_signer::{EncodableKey, Signer},
     solana_tpu_client_next::SendTransactionStats,
-    solana_tpu_tools_common::accounts_file::{
-        create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
+    solana_tpu_tools_common::{
+        accounts_file::{
+            create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
+        },
+        accounts_top_off::top_off_accounts_with_submitter,
+        tpu_transaction_client::create_tpu_transaction_client,
     },
-    std::{sync::Arc, time::Duration},
+    std::{num::NonZeroUsize, sync::Arc, time::Duration},
     tokio_util::sync::CancellationToken,
 };
 
@@ -70,6 +74,25 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
                 options.accounts_file,
                 options.balance,
                 options.reclaim_excess,
+            )
+            .await?;
+        }
+        Command::TopOffTpu {
+            options,
+            execution_params,
+        } => {
+            if !authority_provided {
+                return Err(RateLatencyToolError::InvalidCliArguments(
+                    "top-off-tpu requires --authority to fund accounts and pay fees".to_string(),
+                ));
+            }
+            top_off_accounts_by_tpu(
+                rpc_client,
+                websocket_url,
+                &authority,
+                options,
+                execution_params,
+                cancel.clone(),
             )
             .await?;
         }
@@ -133,6 +156,53 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
         }
     }
 
+    Ok(())
+}
+
+async fn top_off_accounts_by_tpu(
+    rpc_client: Arc<RpcClient>,
+    websocket_url: String,
+    authority: &Keypair,
+    options: solana_tpu_tools_common::cli::TopOff,
+    TpuTopOffExecutionParams {
+        staked_identity_file,
+        bind,
+        num_max_open_connections,
+        send_fanout,
+        leader_tracker,
+    }: TpuTopOffExecutionParams,
+    cancel: CancellationToken,
+) -> Result<(), RateLatencyToolError> {
+    let num_max_open_connections =
+        NonZeroUsize::new(num_max_open_connections).ok_or_else(|| {
+            RateLatencyToolError::InvalidCliArguments(
+                "--num-max-open-connections must be greater than zero".to_string(),
+            )
+        })?;
+    let tpu_client = create_tpu_transaction_client(
+        rpc_client.clone(),
+        leader_tracker,
+        websocket_url,
+        bind,
+        staked_identity_file,
+        num_max_open_connections,
+        send_fanout,
+        cancel.clone(),
+    )
+    .await?;
+    let top_off_result = top_off_accounts_with_submitter(
+        &rpc_client,
+        authority,
+        options.accounts_file,
+        options.balance,
+        options.reclaim_excess,
+        &tpu_client.transaction_submitter,
+    )
+    .await;
+    cancel.cancel();
+    let shutdown_result = tpu_client.shutdown().await;
+    top_off_result?;
+    shutdown_result?;
     Ok(())
 }
 

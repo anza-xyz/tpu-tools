@@ -5,6 +5,7 @@ use {
     solana_tpu_tools_common::{
         accounts_creator::Error as AccountsCreatorError, accounts_file::Error as AccountsFileError,
         blockhash_updater::BlockhashUpdaterError, leader_updater::Error as LeaderUpdaterError,
+        tpu_transaction_client::Error as TpuTransactionClientError,
     },
     thiserror::Error,
 };
@@ -15,6 +16,9 @@ pub enum RateLatencyToolError {
     TopOff(#[from] solana_tpu_tools_common::accounts_top_off::Error),
     #[error(transparent)]
     AccountsCreatorError(#[from] AccountsCreatorError),
+
+    #[error(transparent)]
+    TpuTransactionClientError(#[from] TpuTransactionClientError),
 
     #[error(transparent)]
     ConnectionTasksSchedulerError(#[from] ConnectionWorkersSchedulerError),

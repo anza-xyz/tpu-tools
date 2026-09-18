@@ -96,6 +96,16 @@ pub struct ClientCliParameters {
 pub enum Command {
     #[clap(about = "Restore saved payer balances, optionally collecting surplus funds.")]
     TopOff(solana_tpu_tools_common::cli::TopOff),
+
+    #[clap(about = "Restore saved payer balances through TPU, confirming through RPC.")]
+    TopOffTpu {
+        #[clap(flatten)]
+        options: solana_tpu_tools_common::cli::TopOff,
+
+        #[clap(flatten)]
+        execution_params: TpuTopOffExecutionParams,
+    },
+
     #[clap(about = "Create accounts without saving them and run")]
     Run {
         #[clap(flatten)]
@@ -125,6 +135,46 @@ pub enum Command {
 
     #[clap(about = "Transfer all lamports from account-file payers to a recipient")]
     DeleteAccounts(DeleteAccounts),
+}
+
+#[derive(Args, Clone, Debug, PartialEq, Eq)]
+#[clap(rename_all = "kebab-case")]
+pub struct TpuTopOffExecutionParams {
+    #[clap(
+        long = "staked-identity-file",
+        help = "Validator identity keypair file for staked connection. Without this flag an \
+                unstaked TPU connection is used."
+    )]
+    pub staked_identity_files: Vec<PathBuf>,
+
+    #[clap(long, help = "bind", default_value = "0.0.0.0:0")]
+    pub bind: SocketAddr,
+
+    #[clap(
+        long = "endpoint-config",
+        value_parser = parse_endpoint_config,
+        conflicts_with_all = ["bind", "staked_identity_files"],
+        help = "Endpoint configuration in the form <bind>[,<staked_identity_file>]. Only the first resolved endpoint is used for top-off."
+    )]
+    pub endpoint_configs: Vec<EndpointConfig>,
+
+    #[clap(
+        long,
+        default_value_t = NonZeroUsize::new(16).expect("16 is non-zero"),
+        value_parser = value_parser!(NonZeroUsize),
+        help = "Max number of TPU connections to keep open."
+    )]
+    pub num_max_open_connections: NonZeroUsize,
+
+    #[clap(
+        long,
+        default_value_t = 1,
+        help = "To how many future leaders the transactions should be sent."
+    )]
+    pub send_fanout: usize,
+
+    #[clap(subcommand)]
+    pub leader_tracker: LeaderTracker,
 }
 
 #[derive(Args, Clone, Debug, PartialEq, Eq)]

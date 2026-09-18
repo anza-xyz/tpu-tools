@@ -1,6 +1,10 @@
-//! Restore persisted payer balances using confirmed RPC transfers.
+//! Restore persisted payer balances using confirmed transfers.
 use {
-    crate::accounts_file::read_accounts_file,
+    crate::{
+        accounts_file::read_accounts_file,
+        tpu_transaction_client::{self, TransactionSubmitter},
+    },
+    solana_commitment_config::CommitmentConfig,
     solana_hash::Hash,
     solana_keypair::Keypair,
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
@@ -9,6 +13,7 @@ use {
     },
     solana_signer::Signer,
     solana_system_interface::instruction::transfer,
+    solana_tpu_client_next::ClientError as TpuClientError,
     std::{collections::HashSet, path::PathBuf},
     thiserror::Error,
 };
@@ -21,6 +26,21 @@ pub enum Error {
     /// The funding account cannot also be a target account.
     #[error("Authority must not appear in the payer accounts file")]
     AuthorityIsPayer,
+    /// TPU client operation failed.
+    #[error(transparent)]
+    TpuTransactionClient(#[from] tpu_transaction_client::Error),
+    /// TPU transaction send failed.
+    #[error(transparent)]
+    TpuClient(#[from] TpuClientError),
+    /// Transaction serialization failed.
+    #[error("Failed to serialize transaction: {0}")]
+    SerializeTransaction(String),
+    /// The submitted transaction was not confirmed.
+    #[error("Transaction {0} was not confirmed")]
+    TransactionNotConfirmed(String),
+    /// Transaction cannot be submitted because it has no signature.
+    #[error("Transaction cannot be submitted because it has no signature")]
+    MissingSignature,
 }
 
 /// Bring each payer up to `target`, optionally transferring excess to `authority`.
@@ -32,6 +52,26 @@ pub async fn top_off_accounts(
     accounts_file: PathBuf,
     target: u64,
     reclaim_excess: bool,
+) -> Result<(), Error> {
+    top_off_accounts_with_submitter(
+        rpc,
+        authority,
+        accounts_file,
+        target,
+        reclaim_excess,
+        &TransactionSubmitter::Rpc,
+    )
+    .await
+}
+
+/// Bring each payer up to `target` using the requested transaction submitter.
+pub async fn top_off_accounts_with_submitter(
+    rpc: &RpcClient,
+    authority: &Keypair,
+    accounts_file: PathBuf,
+    target: u64,
+    reclaim_excess: bool,
+    transaction_submitter: &TransactionSubmitter,
 ) -> Result<(), Error> {
     let accounts = read_accounts_file(accounts_file);
     if accounts
@@ -52,8 +92,36 @@ pub async fn top_off_accounts(
         };
         let blockhash = rpc.get_latest_blockhash().await?;
         let tx = transfer_transaction(authority, &payer, collect, amount, blockhash);
-        rpc.send_and_confirm_transaction(&tx).await?;
+        send_and_confirm_transaction(rpc, transaction_submitter, &tx).await?;
         log::info!("Updated payer {} to {target} lamports", payer.pubkey());
+    }
+    Ok(())
+}
+
+async fn send_and_confirm_transaction(
+    rpc: &RpcClient,
+    transaction_submitter: &TransactionSubmitter,
+    tx: &Transaction,
+) -> Result<(), Error> {
+    match transaction_submitter {
+        TransactionSubmitter::Rpc => {
+            rpc.send_and_confirm_transaction(tx).await?;
+        }
+        TransactionSubmitter::Tpu(transaction_sender) => {
+            let signature = tx.signatures.first().ok_or(Error::MissingSignature)?;
+            let wire_transaction = wincode::serialize(tx)
+                .map_err(|err| Error::SerializeTransaction(err.to_string()))?;
+            transaction_sender
+                .send_transaction(wire_transaction)
+                .await?;
+            let confirmed = rpc
+                .confirm_transaction_with_commitment(signature, CommitmentConfig::finalized())
+                .await?
+                .value;
+            if !confirmed {
+                return Err(Error::TransactionNotConfirmed(signature.to_string()));
+            }
+        }
     }
     Ok(())
 }
