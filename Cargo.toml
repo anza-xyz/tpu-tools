@@ -37,7 +37,7 @@ jemallocator = { package = "tikv-jemallocator", version = "0.6.0", features = [
     "stats",
 ] }
 log = "0.4.33"
-rand = "0.9.4"
+rand = "0.10.2"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 solana-clap-v3-utils = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
