@@ -4,17 +4,21 @@ use {
     solana_cli_config::ConfigInput,
     solana_keypair::Keypair,
     solana_rate_latency_tool::{
-        cli::{ClientCliParameters, Command, build_cli_parameters},
+        cli::{ClientCliParameters, Command, TpuTopOffExecutionParams, build_cli_parameters},
         error::RateLatencyToolError,
         run_client::run_client,
     },
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_signer::{EncodableKey, Signer},
     solana_tpu_client_next::SendTransactionStats,
-    solana_tpu_tools_common::accounts_file::{
-        create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
+    solana_tpu_tools_common::{
+        accounts_file::{
+            create_ephemeral_accounts, create_file_persisted_accounts, read_accounts_file,
+        },
+        accounts_top_off::top_off_accounts_with_submitter,
+        tpu_transaction_client::create_tpu_transaction_client,
     },
-    std::{sync::Arc, time::Duration},
+    std::{num::NonZeroUsize, sync::Arc, time::Duration},
     tokio_util::sync::CancellationToken,
 };
 
@@ -38,6 +42,7 @@ fn main() {
 
 #[tokio::main]
 async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError> {
+    let authority_provided = parameters.authority.is_some();
     let authority = if let Some(authority_file) = parameters.authority {
         Keypair::read_from_file(authority_file)
             .map_err(|_err| RateLatencyToolError::KeypairReadFailure)?
@@ -57,6 +62,25 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
     let cancel = CancellationToken::new();
 
     match parameters.command {
+        Command::TopOff {
+            options,
+            execution_params,
+        } => {
+            if !authority_provided {
+                return Err(RateLatencyToolError::InvalidCliArguments(
+                    "top-off requires --authority to fund accounts and pay fees".to_string(),
+                ));
+            }
+            top_off_accounts_with_mode(
+                rpc_client,
+                websocket_url,
+                &authority,
+                options,
+                execution_params,
+                cancel.clone(),
+            )
+            .await?;
+        }
         Command::Run {
             account_params,
             execution_params,
@@ -117,6 +141,69 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
         }
     }
 
+    Ok(())
+}
+
+async fn top_off_accounts_with_mode(
+    rpc_client: Arc<RpcClient>,
+    websocket_url: String,
+    authority: &Keypair,
+    options: solana_tpu_tools_common::cli::TopOff,
+    TpuTopOffExecutionParams {
+        staked_identity_file,
+        bind,
+    }: TpuTopOffExecutionParams,
+    cancel: CancellationToken,
+) -> Result<(), RateLatencyToolError> {
+    let solana_tpu_tools_common::cli::TopOff {
+        accounts_file,
+        balance,
+        reclaim_excess,
+        use_rpc,
+        leader_tracker,
+    } = options;
+
+    if use_rpc {
+        solana_tpu_tools_common::accounts_top_off::top_off_accounts(
+            &rpc_client,
+            authority,
+            accounts_file,
+            balance,
+            reclaim_excess,
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let leader_tracker = leader_tracker.ok_or_else(|| {
+        RateLatencyToolError::InvalidCliArguments(
+            "top-off requires a leader tracker unless --use-rpc is supplied".to_string(),
+        )
+    })?;
+    let tpu_client = create_tpu_transaction_client(
+        rpc_client.clone(),
+        leader_tracker,
+        websocket_url,
+        bind,
+        staked_identity_file,
+        NonZeroUsize::new(16).expect("16 is non-zero"),
+        2,
+        cancel.clone(),
+    )
+    .await?;
+    let top_off_result = top_off_accounts_with_submitter(
+        &rpc_client,
+        authority,
+        accounts_file,
+        balance,
+        reclaim_excess,
+        &tpu_client.transaction_submitter,
+    )
+    .await;
+    cancel.cancel();
+    let shutdown_result = tpu_client.shutdown().await;
+    top_off_result?;
+    shutdown_result?;
     Ok(())
 }
 

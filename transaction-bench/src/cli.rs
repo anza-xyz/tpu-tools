@@ -94,6 +94,15 @@ pub struct ClientCliParameters {
 
 #[derive(Subcommand, Debug, PartialEq)]
 pub enum Command {
+    #[clap(about = "Restore saved payer balances, optionally collecting surplus funds.")]
+    TopOff {
+        #[clap(flatten)]
+        options: solana_tpu_tools_common::cli::TopOff,
+
+        #[clap(flatten)]
+        execution_params: TpuTopOffExecutionParams,
+    },
+
     #[clap(about = "Create accounts without saving them and run")]
     Run {
         #[clap(flatten)]
@@ -123,6 +132,28 @@ pub enum Command {
 
     #[clap(about = "Transfer all lamports from account-file payers to a recipient")]
     DeleteAccounts(DeleteAccounts),
+}
+
+#[derive(Args, Clone, Debug, PartialEq, Eq)]
+#[clap(rename_all = "kebab-case")]
+pub struct TpuTopOffExecutionParams {
+    #[clap(
+        long = "staked-identity-file",
+        help = "Validator identity keypair file for staked connection. Without this flag an \
+                unstaked TPU connection is used."
+    )]
+    pub staked_identity_files: Vec<PathBuf>,
+
+    #[clap(long, help = "bind", default_value = "0.0.0.0:0")]
+    pub bind: SocketAddr,
+
+    #[clap(
+        long = "endpoint-config",
+        value_parser = parse_endpoint_config,
+        conflicts_with_all = ["bind", "staked_identity_files"],
+        help = "Endpoint configuration in the form <bind>[,<staked_identity_file>]. Only the first resolved endpoint is used for top-off."
+    )]
+    pub endpoint_configs: Vec<EndpointConfig>,
 }
 
 #[derive(Args, Clone, Debug, PartialEq, Eq)]

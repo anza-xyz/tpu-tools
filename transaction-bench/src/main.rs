@@ -12,17 +12,26 @@ use {
             AccountsFile, create_ephemeral_accounts, create_file_persisted_accounts,
             read_accounts_file,
         },
-        cli::{LeaderTracker, parse_recipient},
+        accounts_top_off::top_off_accounts_with_submitter,
+        cli::{LeaderTracker, TopOff, parse_recipient},
+        tpu_transaction_client::create_tpu_transaction_client,
     },
     solana_transaction_bench::{
         cli::{
-            CliExecutionParams, ClientCliParameters, Command, EndpointConfig, build_cli_parameters,
+            CliExecutionParams, ClientCliParameters, Command, EndpointConfig,
+            TpuTopOffExecutionParams, build_cli_parameters,
         },
         error::BenchClientError,
         mock_rpc_client::new_mock_rpc_client,
         run_client::{ExecutionParams, RunClientStats, run_client},
     },
-    std::{net::SocketAddr, num::NonZeroU64, path::PathBuf, sync::Arc, time::Duration},
+    std::{
+        net::SocketAddr,
+        num::{NonZeroU64, NonZeroUsize},
+        path::PathBuf,
+        sync::Arc,
+        time::Duration,
+    },
     tokio::{sync::oneshot, task::JoinHandle},
     tokio_util::sync::CancellationToken,
 };
@@ -76,6 +85,24 @@ async fn run(parameters: ClientCliParameters) -> Result<(), BenchClientError> {
     });
 
     match parameters.command {
+        Command::TopOff {
+            options,
+            execution_params,
+        } => {
+            if !authority_provided {
+                return Err(BenchClientError::InvalidCliArguments(
+                    "top-off requires --authority to fund accounts and pay fees".to_string(),
+                ));
+            }
+            top_off_accounts_with_mode(
+                rpc_client,
+                websocket_url,
+                &authority,
+                options,
+                execution_params,
+            )
+            .await?;
+        }
         Command::Run {
             transaction_params,
             account_params,
@@ -171,6 +198,74 @@ async fn run(parameters: ClientCliParameters) -> Result<(), BenchClientError> {
     Ok(())
 }
 
+async fn top_off_accounts_with_mode(
+    rpc_client: Arc<RpcClient>,
+    websocket_url: String,
+    authority: &Keypair,
+    options: TopOff,
+    TpuTopOffExecutionParams {
+        staked_identity_files,
+        bind,
+        endpoint_configs,
+    }: TpuTopOffExecutionParams,
+) -> Result<(), BenchClientError> {
+    let TopOff {
+        accounts_file,
+        balance,
+        reclaim_excess,
+        use_rpc,
+        leader_tracker,
+    } = options;
+
+    if use_rpc {
+        solana_tpu_tools_common::accounts_top_off::top_off_accounts(
+            &rpc_client,
+            authority,
+            accounts_file,
+            balance,
+            reclaim_excess,
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let leader_tracker = leader_tracker.ok_or_else(|| {
+        BenchClientError::InvalidCliArguments(
+            "top-off requires a leader tracker unless --use-rpc is supplied".to_string(),
+        )
+    })?;
+    let endpoint_config = resolve_endpoint_configs(endpoint_configs, staked_identity_files, bind)
+        .into_iter()
+        .next()
+        .expect("top-off endpoint config should never be empty");
+    let cancel = CancellationToken::new();
+    let tpu_client = create_tpu_transaction_client(
+        rpc_client.clone(),
+        leader_tracker,
+        websocket_url,
+        endpoint_config.bind,
+        endpoint_config.staked_identity_file,
+        NonZeroUsize::new(16).expect("16 is non-zero"),
+        2,
+        cancel.clone(),
+    )
+    .await?;
+    let top_off_result = top_off_accounts_with_submitter(
+        &rpc_client,
+        authority,
+        accounts_file,
+        balance,
+        reclaim_excess,
+        &tpu_client.transaction_submitter,
+    )
+    .await;
+    cancel.cancel();
+    let shutdown_result = tpu_client.shutdown().await;
+    top_off_result?;
+    shutdown_result?;
+    Ok(())
+}
+
 fn validate_mock_rpc_usage(parameters: &ClientCliParameters) -> Result<(), BenchClientError> {
     if !parameters.mock_rpc {
         return Ok(());
@@ -204,7 +299,7 @@ fn validate_mock_rpc_usage(parameters: &ClientCliParameters) -> Result<(), Bench
 
     if matches!(
         &parameters.command,
-        Command::WriteAccounts(_) | Command::DeleteAccounts(_)
+        Command::WriteAccounts(_) | Command::DeleteAccounts(_) | Command::TopOff { .. }
     ) {
         return Err(BenchClientError::InvalidCliArguments(
             "--mock-rpc does not support account file mutation commands".to_string(),

@@ -6,6 +6,7 @@ use {
         accounts_creator::Error as AccountsCreatorError,
         accounts_deleter::Error as AccountsDeleterError, accounts_file::Error as AccountsFileError,
         blockhash_updater::BlockhashUpdaterError, leader_updater::Error as LeaderUpdaterError,
+        tpu_transaction_client::Error as TpuTransactionClientError,
     },
     thiserror::Error,
 };
@@ -13,7 +14,12 @@ use {
 #[derive(Debug, Error)]
 pub enum BenchClientError {
     #[error(transparent)]
+    TopOff(#[from] solana_tpu_tools_common::accounts_top_off::Error),
+    #[error(transparent)]
     AccountsCreatorError(#[from] AccountsCreatorError),
+
+    #[error(transparent)]
+    TpuTransactionClientError(#[from] TpuTransactionClientError),
 
     #[error(transparent)]
     AccountsDeleterError(#[from] AccountsDeleterError),

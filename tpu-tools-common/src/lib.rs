@@ -27,8 +27,10 @@
 pub mod accounts_creator;
 pub mod accounts_deleter;
 pub mod accounts_file;
+pub mod accounts_top_off;
 pub mod blockhash_updater;
 pub mod cli;
 mod custom_geyser_node_address_service;
 pub mod leader_updater;
+pub mod tpu_transaction_client;
 pub mod yellowstone_leader_tracker;
