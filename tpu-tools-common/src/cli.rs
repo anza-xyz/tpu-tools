@@ -100,6 +100,13 @@ pub struct TopOff {
     /// Transfer balances above the target back to the authority.
     #[clap(long)]
     pub reclaim_excess: bool,
+
+    /// Submit and confirm transfers through RPC instead of sending through TPU.
+    #[clap(long)]
+    pub use_rpc: bool,
+
+    #[clap(subcommand)]
+    pub leader_tracker: Option<LeaderTracker>,
 }
 
 /// Parameters for draining payer accounts from a file.
@@ -226,6 +233,8 @@ mod tests {
         .unwrap();
         assert_eq!(parsed.options.balance, 2_000_000_000);
         assert!(parsed.options.reclaim_excess);
+        assert!(!parsed.options.use_rpc);
+        assert_eq!(parsed.options.leader_tracker, None);
         assert!(TestCli::try_parse_from(["test", "--accounts-file", "payers.json"]).is_err());
     }
 

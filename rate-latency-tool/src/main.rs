@@ -62,31 +62,16 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
     let cancel = CancellationToken::new();
 
     match parameters.command {
-        Command::TopOff(options) => {
-            if !authority_provided {
-                return Err(RateLatencyToolError::InvalidCliArguments(
-                    "top-off requires --authority to fund accounts and pay fees".to_string(),
-                ));
-            }
-            solana_tpu_tools_common::accounts_top_off::top_off_accounts(
-                &rpc_client,
-                &authority,
-                options.accounts_file,
-                options.balance,
-                options.reclaim_excess,
-            )
-            .await?;
-        }
-        Command::TopOffTpu {
+        Command::TopOff {
             options,
             execution_params,
         } => {
             if !authority_provided {
                 return Err(RateLatencyToolError::InvalidCliArguments(
-                    "top-off-tpu requires --authority to fund accounts and pay fees".to_string(),
+                    "top-off requires --authority to fund accounts and pay fees".to_string(),
                 ));
             }
-            top_off_accounts_by_tpu(
+            top_off_accounts_with_mode(
                 rpc_client,
                 websocket_url,
                 &authority,
@@ -159,7 +144,7 @@ async fn run(parameters: ClientCliParameters) -> Result<(), RateLatencyToolError
     Ok(())
 }
 
-async fn top_off_accounts_by_tpu(
+async fn top_off_accounts_with_mode(
     rpc_client: Arc<RpcClient>,
     websocket_url: String,
     authority: &Keypair,
@@ -167,35 +152,51 @@ async fn top_off_accounts_by_tpu(
     TpuTopOffExecutionParams {
         staked_identity_file,
         bind,
-        num_max_open_connections,
-        send_fanout,
-        leader_tracker,
     }: TpuTopOffExecutionParams,
     cancel: CancellationToken,
 ) -> Result<(), RateLatencyToolError> {
-    let num_max_open_connections =
-        NonZeroUsize::new(num_max_open_connections).ok_or_else(|| {
-            RateLatencyToolError::InvalidCliArguments(
-                "--num-max-open-connections must be greater than zero".to_string(),
-            )
-        })?;
+    let solana_tpu_tools_common::cli::TopOff {
+        accounts_file,
+        balance,
+        reclaim_excess,
+        use_rpc,
+        leader_tracker,
+    } = options;
+
+    if use_rpc {
+        solana_tpu_tools_common::accounts_top_off::top_off_accounts(
+            &rpc_client,
+            authority,
+            accounts_file,
+            balance,
+            reclaim_excess,
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let leader_tracker = leader_tracker.ok_or_else(|| {
+        RateLatencyToolError::InvalidCliArguments(
+            "top-off requires a leader tracker unless --use-rpc is supplied".to_string(),
+        )
+    })?;
     let tpu_client = create_tpu_transaction_client(
         rpc_client.clone(),
         leader_tracker,
         websocket_url,
         bind,
         staked_identity_file,
-        num_max_open_connections,
-        send_fanout,
+        NonZeroUsize::new(16).expect("16 is non-zero"),
+        2,
         cancel.clone(),
     )
     .await?;
     let top_off_result = top_off_accounts_with_submitter(
         &rpc_client,
         authority,
-        options.accounts_file,
-        options.balance,
-        options.reclaim_excess,
+        accounts_file,
+        balance,
+        reclaim_excess,
         &tpu_client.transaction_submitter,
     )
     .await;

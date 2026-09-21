@@ -95,10 +95,7 @@ pub struct ClientCliParameters {
 #[derive(Subcommand, Debug, PartialEq, Eq)]
 pub enum Command {
     #[clap(about = "Restore saved payer balances, optionally collecting surplus funds.")]
-    TopOff(solana_tpu_tools_common::cli::TopOff),
-
-    #[clap(about = "Restore saved payer balances through TPU, confirming through RPC.")]
-    TopOffTpu {
+    TopOff {
         #[clap(flatten)]
         options: solana_tpu_tools_common::cli::TopOff,
 
@@ -157,24 +154,6 @@ pub struct TpuTopOffExecutionParams {
         help = "Endpoint configuration in the form <bind>[,<staked_identity_file>]. Only the first resolved endpoint is used for top-off."
     )]
     pub endpoint_configs: Vec<EndpointConfig>,
-
-    #[clap(
-        long,
-        default_value_t = NonZeroUsize::new(16).expect("16 is non-zero"),
-        value_parser = value_parser!(NonZeroUsize),
-        help = "Max number of TPU connections to keep open."
-    )]
-    pub num_max_open_connections: NonZeroUsize,
-
-    #[clap(
-        long,
-        default_value_t = 1,
-        help = "To how many future leaders the transactions should be sent."
-    )]
-    pub send_fanout: usize,
-
-    #[clap(subcommand)]
-    pub leader_tracker: LeaderTracker,
 }
 
 #[derive(Args, Clone, Debug, PartialEq, Eq)]

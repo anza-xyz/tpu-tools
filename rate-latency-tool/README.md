@@ -8,16 +8,16 @@ option returns surplus lamports to the authority. The authority funds deficits
 and pays transaction fees, so it must have funds before running the command.
 
 ```shell
-solana-rate-latency-tool -ul --authority funding.json top-off --accounts-file payers.json --balance 1SOL
-solana-rate-latency-tool -ul --authority funding.json top-off --accounts-file payers.json --balance 1SOL --reclaim-excess
-solana-rate-latency-tool -ul --authority funding.json top-off-tpu --accounts-file payers.json --balance 1SOL --num-max-open-connections 8 --send-fanout 1 ws-leader-tracker
+solana-rate-latency-tool -ul --authority funding.json top-off --accounts-file payers.json --balance 1SOL ws-leader-tracker
+solana-rate-latency-tool -ul --authority funding.json top-off --accounts-file payers.json --balance 1SOL --reclaim-excess ws-leader-tracker
+solana-rate-latency-tool -ul --authority funding.json top-off --accounts-file payers.json --balance 1SOL --use-rpc
 ```
 
 Balances accept SOL (the default unit) or LAMPORTS. The balance is the desired
 total per payer, not an amount added on each run. Keep payers idle during this
 operation and use rent-exempt target balances for accounts you intend to keep.
-Use `top-off-tpu` to submit transfers through TPU and confirm them through RPC.
-The regular `top-off` command submits and confirms sequentially via RPC. On an RPC error,
+By default, `top-off` submits transfers through TPU and confirms them through RPC.
+Use `--use-rpc` to submit and confirm sequentially through RPC. On an RPC error,
 the command stops; earlier transfers may already have completed. Check the
 failed transaction's status before rerunning after an uncertain confirmation.
 
