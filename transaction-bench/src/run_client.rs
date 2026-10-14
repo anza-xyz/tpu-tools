@@ -285,6 +285,9 @@ pub async fn run_client(
         }
     }
     let shutdown_result = leader_updater_factory.shutdown().await;
+    if let Err(err) = &shutdown_result {
+        error!("Leader updater shutdown failed: {err:?}");
+    }
     result?;
     shutdown_result?;
     Ok(())

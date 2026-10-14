@@ -30,7 +30,7 @@ pub enum BenchClientError {
     #[error("Could not find validator identity among staked nodes")]
     FindValidatorIdentityFailure,
 
-    #[error("Leader updater failed")]
+    #[error("Leader updater failed: {0}")]
     LeaderUpdaterError(#[from] LeaderUpdaterError),
 
     #[error(transparent)]
