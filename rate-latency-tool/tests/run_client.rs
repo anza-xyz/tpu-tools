@@ -15,7 +15,7 @@ use {
     solana_rpc::{rpc::JsonRpcConfig, rpc_pubsub_service::PubSubConfig},
     solana_rpc_client::nonblocking::rpc_client::RpcClient,
     solana_rpc_client_api::{
-        config::{RpcBlockSubscribeConfig, RpcBlockSubscribeFilter},
+        config::{RpcBlockSubscribeConfig, RpcBlockSubscribeFilter, TransactionDetails},
         response::{
             Response, RpcBlockUpdate, RpcBlockUpdateError,
             transaction::versioned::VersionedTransaction,
@@ -83,7 +83,7 @@ fn test_transactions_sending() {
         Some(RpcBlockSubscribeConfig {
             commitment: Some(CommitmentConfig::confirmed()),
             encoding: None,
-            transaction_details: None,
+            transaction_details: Some(TransactionDetails::Full),
             show_rewards: None,
             max_supported_transaction_version: None,
         }),
@@ -170,7 +170,7 @@ fn test_transactions_sending() {
     // If we don't drop the test_validator, the blocking web socket service
     // won't return, and the `block_subscribe_client` won't shut down
     drop(test_validator);
-    block_subscribe_client.shutdown().unwrap();
+    let _ = block_subscribe_client.shutdown();
 }
 
 async fn get_latest_blockhash(client: &RpcClient) -> Hash {

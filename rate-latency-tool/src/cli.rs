@@ -51,6 +51,15 @@ pub struct ClientCliParameters {
 
 #[derive(Subcommand, Debug, PartialEq, Eq)]
 pub enum Command {
+    #[clap(about = "Restore saved payer balances, optionally collecting surplus funds.")]
+    TopOff {
+        #[clap(flatten)]
+        options: solana_tpu_tools_common::cli::TopOff,
+
+        #[clap(flatten)]
+        execution_params: TpuTopOffExecutionParams,
+    },
+
     #[clap(about = "Create accounts without saving them and run.")]
     Run {
         #[clap(flatten)]
@@ -77,6 +86,16 @@ pub enum Command {
 
     #[clap(about = "Create accounts and save them to a file, skipping the execution.")]
     WriteAccounts(WriteAccounts),
+}
+
+#[derive(Args, Clone, Debug, PartialEq, Eq)]
+#[clap(rename_all = "kebab-case")]
+pub struct TpuTopOffExecutionParams {
+    #[clap(long, help = "validator identity for staked connection.")]
+    pub staked_identity_file: Option<PathBuf>,
+
+    #[clap(long, help = "bind", default_value = "0.0.0.0:0")]
+    pub bind: SocketAddr,
 }
 
 #[derive(Args, Clone, Debug, PartialEq, Eq)]
