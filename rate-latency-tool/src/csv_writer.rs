@@ -216,39 +216,33 @@ pub async fn run_csv_writer(
         let cancel = cancel.clone();
         let pending_txs = pending_txs.clone();
         async move {
-        let mut sent_records = Vec::with_capacity(READ_AT_ONCE);
-        loop {
-            select! {
-                received = tx_tracker_receiver.recv_many(&mut sent_records, READ_AT_ONCE) => {
-                    debug!("CSV writer received {} records.", sent_records.len());
-                    if received == 0 {
-                        info!("Sender for records has been dropped. Stopping csv writer...");
-                        break;
-                    }
+            let mut sent_records = Vec::with_capacity(READ_AT_ONCE);
+            loop {
+                select! {
+                    received = tx_tracker_receiver.recv_many(&mut sent_records, READ_AT_ONCE) => {
+                        debug!("CSV writer received {} records.", sent_records.len());
+                        if received == 0 {
+                            info!("Sender for records has been dropped. Stopping csv writer...");
+                            break;
+                        }
 
-                    let mut pending_txs = pending_txs.lock().unwrap();
+                        let mut pending_txs = pending_txs.lock().unwrap();
 
-                    for record in sent_records.drain(..) {
-                        // these transactions were sent, so we know that transaction_id is there
-                        pending_txs.insert(record.transaction_id.unwrap(), record);
-                    }
-                }
-                _ = cancel.cancelled() => {
-                    info!("Cancellation received, dumping all pending txs and stopping tx tracker csv writer.");
-                    // dump those which are still pending
-                    let pending_txs = pending_txs.lock().unwrap();
-                    for rec in pending_txs.values() {
-                        if let Err(e) = writer_sender.send(rec.as_csv_record()) {
-                            error!("Send csv failed: {e}");
+                        for record in sent_records.drain(..) {
+                            // these transactions were sent, so we know that transaction_id is there
+                            pending_txs.insert(record.transaction_id.unwrap(), record);
                         }
                     }
-                    break;
+                    _ = cancel.cancelled() => {
+                        info!("Cancellation received, stopping tx tracker csv writer.");
+                        break;
+                    }
                 }
             }
         }
-    }});
+    });
 
-    tracker.spawn(async move {
+    let writer_task = tokio::spawn(async move {
         let mut complete_records = Vec::with_capacity(READ_AT_ONCE_FOR_CSV);
         loop {
             let received = writer_receiver
@@ -275,5 +269,141 @@ pub async fn run_csv_writer(
     tracker.wait().await;
     debug!("CSV writer tasks finished.");
 
+    // The sent channel may close before collection is cancelled. Wait for all producers so
+    // late block records can still match pending transactions, then write the remainder once.
+    let pending_txs = std::mem::take(&mut *pending_txs.lock().unwrap());
+    for rec in pending_txs.into_values() {
+        if let Err(e) = writer_sender.send(rec.as_csv_record()) {
+            error!("Send csv failed: {e}");
+        }
+    }
+    drop(writer_sender);
+    writer_task
+        .await
+        .map_err(|_| CSVWriterError::WritingError)?;
+
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        std::sync::atomic::{AtomicUsize, Ordering},
+        tokio::{sync::mpsc::channel, time::timeout},
+    };
+
+    struct TestCsv(PathBuf);
+
+    impl Drop for TestCsv {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    fn record(id: usize) -> CSVRecord {
+        CSVRecord {
+            signature: format!("signature-{id}"),
+            transaction_id: Some(id),
+            sent_slot: Some(1),
+            received_slot: None,
+            sent_timestamp: Some(timestamp()),
+            received_timestamp: None,
+            received_subscr_timestamp: None,
+            index_in_block: None,
+            tx_status: vec![(TransactionSendStatus::Sent, "tpu".to_string())],
+            tick: None,
+            tx_type: None,
+            num_transaction_in_block: None,
+        }
+    }
+
+    async fn wait_for_row(file: &TestCsv, record: &CSVRecord) {
+        let expected_row = record.as_csv_record().join(",");
+        timeout(Duration::from_secs(5), async {
+            loop {
+                if std::fs::read_to_string(&file.0)
+                    .is_ok_and(|csv| csv.lines().any(|line| line == expected_row))
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    async fn check_shutdown(close_sender: bool, late_confirmation: bool) {
+        static NEXT_FILE: AtomicUsize = AtomicUsize::new(0);
+        let file = TestCsv(std::env::temp_dir().join(format!(
+            "tpu-csv-{}-{}.csv",
+            std::process::id(),
+            NEXT_FILE.fetch_add(1, Ordering::Relaxed)
+        )));
+        let pending = record(1);
+        let (sent, sent_receiver) = unbounded_channel();
+        let (landed, landed_receiver) = channel(1);
+        sent.send(pending.clone()).unwrap();
+        let sent = if close_sender {
+            drop(sent);
+            None
+        } else {
+            Some(sent)
+        };
+        let cancel = CancellationToken::new();
+        let writer = tokio::spawn(run_csv_writer(
+            file.0.clone(),
+            landed_receiver,
+            sent_receiver,
+            cancel.clone(),
+        ));
+
+        // A flushed probe shows that the writer and its input tasks are running. Keep the
+        // block channel open: closing the sent channel must still allow late confirmations.
+        let mut probe = record(2);
+        probe.transaction_id = None;
+        landed.send(probe.clone()).await.unwrap();
+        wait_for_row(&file, &probe).await;
+
+        let mut expected = pending.clone();
+        if late_confirmation {
+            expected.received_slot = Some(2);
+            landed.send(expected.clone()).await.unwrap();
+            drop(landed);
+            wait_for_row(&file, &expected).await;
+        }
+        cancel.cancel();
+        timeout(Duration::from_secs(5), writer)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        drop(sent);
+
+        let csv = std::fs::read_to_string(&file.0).unwrap();
+        let mut rows: Vec<_> = csv.lines().skip(1).map(str::to_string).collect();
+        rows.sort();
+        let mut expected_rows = vec![
+            expected.as_csv_record().join(","),
+            probe.as_csv_record().join(","),
+        ];
+        expected_rows.sort();
+        assert_eq!(rows, expected_rows);
+    }
+
+    #[tokio::test]
+    async fn closed_sender_preserves_pending_records() {
+        check_shutdown(true, false).await;
+    }
+
+    #[tokio::test]
+    async fn cancellation_preserves_pending_records() {
+        check_shutdown(false, false).await;
+    }
+
+    #[tokio::test]
+    async fn closed_sender_allows_late_confirmation_without_duplicate() {
+        check_shutdown(true, true).await;
+    }
 }
