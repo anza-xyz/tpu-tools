@@ -222,7 +222,8 @@ pub async fn run_csv_writer(
                 received = tx_tracker_receiver.recv_many(&mut sent_records, READ_AT_ONCE) => {
                     debug!("CSV writer received {} records.", sent_records.len());
                     if received == 0 {
-                        info!("Sender for records has been dropped. Stopping csv writer...");
+                        // Keep pending records available for late Yellowstone updates.
+                        cancel.cancelled().await;
                         break;
                     }
 
@@ -235,15 +236,14 @@ pub async fn run_csv_writer(
                 }
                 _ = cancel.cancelled() => {
                     info!("Cancellation received, dumping all pending txs and stopping tx tracker csv writer.");
-                    // dump those which are still pending
-                    let pending_txs = pending_txs.lock().unwrap();
-                    for rec in pending_txs.values() {
-                        if let Err(e) = writer_sender.send(rec.as_csv_record()) {
-                            error!("Send csv failed: {e}");
-                        }
-                    }
                     break;
                 }
+            }
+        }
+        let mut pending_txs = pending_txs.lock().unwrap();
+        for (_, rec) in std::mem::take(&mut *pending_txs) {
+            if let Err(e) = writer_sender.send(rec.as_csv_record()) {
+                error!("Send csv failed: {e}");
             }
         }
     }});
@@ -276,4 +276,84 @@ pub async fn run_csv_writer(
     debug!("CSV writer tasks finished.");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn check_shutdown(close_sender: bool, landed: bool) {
+        let path = std::env::temp_dir().join(format!(
+            "tpu-csv-{}-{close_sender}-{landed}.csv",
+            std::process::id()
+        ));
+        let (block_sender, block_receiver) = tokio::sync::mpsc::channel(16);
+        let (sent_sender, sent_receiver) = unbounded_channel();
+        let cancel = CancellationToken::new();
+        let writer = tokio::spawn(run_csv_writer(
+            path.clone(),
+            block_receiver,
+            sent_receiver,
+            cancel.clone(),
+        ));
+        let record = CSVRecord {
+            signature: "shutdown-test".to_string(),
+            transaction_id: Some(0),
+            sent_slot: Some(1),
+            received_slot: None,
+            sent_timestamp: Some(timestamp()),
+            received_timestamp: None,
+            received_subscr_timestamp: None,
+            index_in_block: None,
+            tx_status: vec![(TransactionSendStatus::Sent, "leader".to_string())],
+            tick: None,
+            tx_type: Some("TargetTpu".to_string()),
+            num_transaction_in_block: None,
+        };
+        sent_sender.send(record.clone()).unwrap();
+        let retained_sender = if close_sender {
+            drop(sent_sender);
+            None
+        } else {
+            Some(sent_sender)
+        };
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        if landed {
+            let mut record = record;
+            record.received_slot = Some(2);
+            record.tx_status.clear();
+            block_sender.send(record).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(5), writer)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        drop((retained_sender, block_sender));
+        let csv = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(csv.lines().count(), 2, "{csv}");
+        assert!(csv.contains("shutdown-test"));
+        assert!(csv.contains("Sent(leader)"), "{csv}");
+        if landed {
+            assert!(csv.contains(",0,1,2,"), "{csv}");
+        }
+    }
+
+    #[tokio::test]
+    async fn preserves_pending_records_after_sender_closes() {
+        check_shutdown(true, false).await;
+    }
+
+    #[tokio::test]
+    async fn preserves_pending_records_on_cancellation() {
+        check_shutdown(false, false).await;
+    }
+
+    #[tokio::test]
+    async fn merges_late_landed_record_after_sender_closes() {
+        check_shutdown(true, true).await;
+    }
 }
