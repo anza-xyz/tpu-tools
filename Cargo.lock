@@ -76,7 +76,7 @@ dependencies = [
  "rayon",
  "solana-bls-signatures",
  "solana-signer-store",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -109,7 +109,7 @@ dependencies = [
  "solana-pubkey 4.3.0",
  "solana-runtime",
  "solana-signer-store",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -150,7 +150,7 @@ dependencies = [
  "slab",
  "smallvec",
  "tempfile",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -167,7 +167,7 @@ dependencies = [
  "solana-signature",
  "solana-transaction",
  "solana-transaction-status",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -270,7 +270,7 @@ dependencies = [
  "solana-pubkey 4.3.0",
  "solana-runtime-transaction",
  "solana-transaction-error",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -299,7 +299,7 @@ dependencies = [
  "symlink",
  "tar",
  "tempfile",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
  "zstd",
 ]
@@ -362,7 +362,7 @@ dependencies = [
  "solana-tls-utils",
  "solana-transaction",
  "solana-validator-exit",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "wincode",
 ]
@@ -388,7 +388,7 @@ dependencies = [
  "solana-pubkey 4.3.0",
  "solana-short-vec",
  "solana-signer-store",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -409,7 +409,7 @@ dependencies = [
  "solana-net-utils",
  "solana-pubkey 4.3.0",
  "solana-tls-utils",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-util 0.7.19",
 ]
@@ -431,7 +431,7 @@ dependencies = [
  "crossbeam-queue",
  "libc",
  "log",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -979,7 +979,7 @@ dependencies = [
  "object",
  "once_cell",
  "scopeguard",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1047,7 +1047,7 @@ dependencies = [
  "bytes",
  "log",
  "object",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1424,7 +1424,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2019,7 +2019,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
 dependencies = [
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3485,7 +3485,7 @@ dependencies = [
  "jni-sys",
  "log",
  "simd_cesu8",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "walkdir",
  "windows-link",
 ]
@@ -4290,7 +4290,7 @@ dependencies = [
  "futures-sink",
  "js-sys",
  "pin-project-lite",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -4826,7 +4826,7 @@ dependencies = [
  "rustc-hash",
  "rustls",
  "socket2 0.6.5",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "web-time",
@@ -4850,7 +4850,7 @@ dependencies = [
  "rustls-pki-types",
  "rustls-platform-verifier",
  "slab",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tinyvec",
  "tracing",
  "web-time",
@@ -5950,7 +5950,7 @@ dependencies = [
  "spl-token-group-interface",
  "spl-token-interface",
  "spl-token-metadata-interface",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
  "zstd",
 ]
@@ -6027,7 +6027,7 @@ dependencies = [
  "solana-transaction-error",
  "spl-generic-token",
  "tempfile",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -6116,7 +6116,7 @@ dependencies = [
  "solana-transaction-context",
  "solana-transaction-error",
  "tarpc",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-serde",
  "wincode",
@@ -6236,7 +6236,7 @@ dependencies = [
  "solana-signature",
  "solana-signer",
  "subtle",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
  "zeroize",
 ]
@@ -6266,7 +6266,7 @@ dependencies = [
  "ark-serialize",
  "bytemuck",
  "solana-define-syscall 5.2.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -6383,7 +6383,7 @@ dependencies = [
  "solana-seed-phrase",
  "solana-signature",
  "solana-signer",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "uriparse",
  "url 2.5.8",
 ]
@@ -6415,7 +6415,7 @@ dependencies = [
  "solana-seed-phrase",
  "solana-signature",
  "solana-signer",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "uriparse",
  "url 2.5.8",
 ]
@@ -6657,7 +6657,7 @@ dependencies = [
  "solana-net-utils",
  "solana-time-utils",
  "solana-transaction-error",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -6792,7 +6792,7 @@ dependencies = [
  "sys-info",
  "sysctl",
  "tempfile",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tikv-jemalloc-ctl",
  "tokio",
  "tokio-util 0.7.19",
@@ -6846,7 +6846,7 @@ dependencies = [
  "curve25519-dalek 4.1.3",
  "solana-define-syscall 5.2.0",
  "subtle",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -6946,7 +6946,7 @@ dependencies = [
  "solana-signature",
  "solana-transaction",
  "solana-transaction-error",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -7025,7 +7025,7 @@ dependencies = [
  "solana-system-transaction",
  "solana-transaction",
  "spl-memo-interface",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "wincode",
 ]
@@ -7134,7 +7134,7 @@ dependencies = [
  "solana-genesis-config",
  "solana-hash 4.6.0",
  "solana-rpc-client",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -7179,7 +7179,7 @@ dependencies = [
  "solana-signature",
  "solana-transaction",
  "solana-transaction-status",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -7235,7 +7235,7 @@ dependencies = [
  "solana-vote-program",
  "solana-wincode-varint",
  "static_assertions",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -7517,7 +7517,7 @@ dependencies = [
  "strum",
  "tar",
  "tempfile",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
  "trees",
@@ -7612,7 +7612,7 @@ dependencies = [
  "solana-cluster-type",
  "solana-sha256-hasher",
  "solana-time-utils",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -7649,7 +7649,7 @@ dependencies = [
  "socket2 0.6.5",
  "solana-serde",
  "solana-svm-type-overrides",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "url 2.5.8",
 ]
@@ -7792,7 +7792,7 @@ dependencies = [
  "solana-pubkey 4.3.0",
  "solana-runtime",
  "solana-transaction",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -7814,7 +7814,7 @@ dependencies = [
  "ark-bn254",
  "light-poseidon",
  "solana-define-syscall 5.2.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -7939,7 +7939,7 @@ dependencies = [
  "solana-sysvar",
  "solana-sysvar-id",
  "solana-transaction-context",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -8003,7 +8003,7 @@ dependencies = [
  "solana-vote-program",
  "spl-generic-token",
  "spl-memo-interface",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -8042,7 +8042,7 @@ dependencies = [
  "solana-pubkey 4.3.0",
  "solana-rpc-client-types",
  "solana-signature",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite",
@@ -8072,7 +8072,7 @@ dependencies = [
  "solana-streamer",
  "solana-tls-utils",
  "solana-transaction-error",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -8125,7 +8125,7 @@ dependencies = [
  "solana-tpu-tools-common",
  "solana-transaction",
  "spl-memo-interface",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-util 0.7.19",
  "tonic",
@@ -8162,7 +8162,7 @@ dependencies = [
  "solana-pubkey 4.3.0",
  "solana-signature",
  "solana-signer",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "trezor-client",
  "uriparse",
 ]
@@ -8271,7 +8271,7 @@ dependencies = [
  "spl-token-2022-interface",
  "spl-token-interface",
  "stream-cancel",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-util 0.7.19",
  "wincode",
@@ -8337,7 +8337,7 @@ dependencies = [
  "solana-signer",
  "solana-transaction-error",
  "solana-transaction-status-client-types",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -8354,7 +8354,7 @@ dependencies = [
  "solana-pubkey 4.3.0",
  "solana-rpc-client",
  "solana-sdk-ids",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -8380,7 +8380,7 @@ dependencies = [
  "solana-transaction-error",
  "solana-transaction-status-client-types",
  "solana-version",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -8513,7 +8513,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tempfile",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -8560,7 +8560,7 @@ dependencies = [
  "log",
  "rand 0.8.7",
  "rustc-demangle",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "winapi",
 ]
 
@@ -8607,7 +8607,7 @@ checksum = "ce0d2e8d53946f04e789476d6c407e4997b7fb412483df5fc10c075c65cb2edf"
 dependencies = [
  "k256",
  "solana-define-syscall 5.2.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -8881,7 +8881,7 @@ dependencies = [
  "solana-transaction",
  "solana-transaction-error",
  "solana-transaction-status",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tonic",
  "tonic-prost",
@@ -8910,7 +8910,7 @@ dependencies = [
  "solana-transaction-context",
  "solana-transaction-error",
  "solana-transaction-status",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tonic-prost-build",
  "wincode",
 ]
@@ -8947,7 +8947,7 @@ dependencies = [
  "solana-time-utils",
  "solana-tls-utils",
  "solana-transaction-error",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-util 0.7.19",
 ]
@@ -8992,7 +8992,7 @@ dependencies = [
  "solana-transaction-context",
  "solana-transaction-error",
  "spl-generic-token",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -9101,7 +9101,7 @@ dependencies = [
  "solana-svm-type-overrides",
  "solana-sysvar-id",
  "solana-transaction-context",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -9323,7 +9323,7 @@ dependencies = [
  "solana-signer",
  "solana-transaction",
  "solana-transaction-error",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "wincode",
 ]
@@ -9357,7 +9357,7 @@ dependencies = [
  "solana-streamer",
  "solana-time-utils",
  "solana-tls-utils",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
  "tokio-util 0.7.19",
@@ -9393,7 +9393,7 @@ dependencies = [
  "solana-signer",
  "solana-system-interface 3.3.0",
  "solana-tpu-client-next",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-util 0.7.19",
  "tonic",
@@ -9472,7 +9472,7 @@ dependencies = [
  "solana-tpu-tools-common",
  "solana-transaction",
  "spl-instruction-padding-interface",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tikv-jemallocator",
  "tokio",
  "tokio-util 0.7.19",
@@ -9551,7 +9551,7 @@ dependencies = [
  "spl-token-group-interface",
  "spl-token-interface",
  "spl-token-metadata-interface",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -9575,7 +9575,7 @@ dependencies = [
  "solana-transaction",
  "solana-transaction-context",
  "solana-transaction-error",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -9623,7 +9623,7 @@ dependencies = [
  "solana-system-transaction",
  "solana-time-utils",
  "solana-transaction-error",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -9729,7 +9729,7 @@ dependencies = [
  "solana-svm-transaction",
  "solana-transaction",
  "solana-vote-interface",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode",
 ]
 
@@ -9867,7 +9867,7 @@ dependencies = [
  "solana-zk-elgamal-proof-interface",
  "solana-zk-sdk-pod",
  "subtle",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "zeroize",
 ]
 
@@ -9881,7 +9881,7 @@ dependencies = [
  "bytemuck",
  "bytemuck_derive",
  "solana-nullable",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -10015,7 +10015,7 @@ dependencies = [
  "spl-token-group-interface",
  "spl-token-metadata-interface",
  "spl-type-length-value",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -10035,7 +10035,7 @@ dependencies = [
  "solana-sdk-ids",
  "solana-zk-elgamal-proof-interface",
  "solana-zk-sdk-pod",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -10054,7 +10054,7 @@ dependencies = [
  "solana-program-error",
  "solana-zero-copy",
  "spl-discriminator",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -10074,7 +10074,7 @@ dependencies = [
  "solana-program-pack",
  "solana-pubkey 3.0.0",
  "solana-sdk-ids",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -10094,7 +10094,7 @@ dependencies = [
  "solana-program-error",
  "spl-discriminator",
  "spl-type-length-value",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -10111,7 +10111,7 @@ dependencies = [
  "solana-program-error",
  "solana-zero-copy",
  "spl-discriminator",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -10261,7 +10261,7 @@ dependencies = [
  "byteorder",
  "enum-as-inner",
  "libc",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "walkdir",
 ]
 
@@ -10298,7 +10298,7 @@ dependencies = [
  "serde",
  "static_assertions",
  "tarpc-plugins",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-serde",
  "tokio-util 0.7.19",
@@ -10362,11 +10362,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
 dependencies = [
- "thiserror-impl 2.0.20",
+ "thiserror-impl 2.0.21",
 ]
 
 [[package]]
@@ -10382,9 +10382,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10859,7 +10859,7 @@ dependencies = [
  "hex",
  "protobuf",
  "rusb",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
@@ -10884,7 +10884,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "sha1",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "utf-8",
  "webpki-roots 0.26.11",
 ]
@@ -11274,7 +11274,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "wincode-derive",
 ]
 
@@ -11493,7 +11493,7 @@ dependencies = [
  "hyper-util",
  "log",
  "pin-project",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tonic",
  "tonic-health",
@@ -11513,7 +11513,7 @@ dependencies = [
  "protoc-bin-vendored",
  "siphasher 1.0.3",
  "solana-pubkey 4.3.0",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
