@@ -59,7 +59,7 @@ solana-message = "=4.5.0"
 solana-metrics = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
 solana-native-token = "=3.0.0"
 solana-net-utils = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
-solana-pubkey = { version = "=4.3.0", default-features = false }
+solana-pubkey = { version = "=4.4.0", default-features = false }
 solana-pubsub-client = { version = "=4.4.0-alpha.2" }
 solana-rent = "=4.4.0"
 solana-rpc = { version = "=4.4.0-alpha.2", features = ["agave-unstable-api"] }
